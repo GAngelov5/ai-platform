@@ -1,0 +1,271 @@
+/**
+ * HTTP-level tests: real NestJS app, real migrations on in-process PostgreSQL
+ * (PGlite), fixture knowledge adapter and the deterministic FAKE model.
+ */
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { INestApplication } from "@nestjs/common";
+import { fileURLToPath } from "node:url";
+import { FakeModelGateway } from "@platform/ai";
+import { createRepositories, type Database } from "@platform/database";
+import { createTestDatabase } from "@platform/database/testing";
+import { loadPlatformConfig } from "@platform/security";
+import { seedFixtures } from "@platform/worker/seed";
+import { buildDeps, createApiApp, createLogger } from "../src/app.js";
+
+const CANARY = "FORBIDDEN-CANARY-7Q4X";
+const FIXTURES_ROOT = fileURLToPath(new URL("../../../fixtures", import.meta.url));
+
+class Client {
+  private cookies = new Map<string, string>();
+  constructor(private readonly base: string) {}
+
+  async req(method: string, path: string, body?: unknown, extraHeaders: Record<string, string> = {}, opts: { csrf?: boolean } = {}) {
+    const headers: Record<string, string> = { ...extraHeaders };
+    if (this.cookies.size) headers.cookie = [...this.cookies].map(([k, v]) => `${k}=${v}`).join("; ");
+    if (method !== "GET" && opts.csrf !== false && this.cookies.has("platform_csrf")) headers["x-csrf-token"] = this.cookies.get("platform_csrf")!;
+    if (body !== undefined) headers["content-type"] = "application/json";
+    const res = await fetch(this.base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    for (const c of res.headers.getSetCookie()) {
+      const [kv] = c.split(";");
+      const i = kv!.indexOf("=");
+      const v = kv!.slice(i + 1);
+      if (v === "" || /Expires=Thu, 01 Jan 1970/i.test(c)) this.cookies.delete(kv!.slice(0, i));
+      else this.cookies.set(kv!.slice(0, i), v);
+    }
+    const text = await res.text();
+    return { status: res.status, text, json: text ? JSON.parse(text) : undefined };
+  }
+
+  async login(principalId: string) {
+    await this.req("GET", "/api/auth/csrf");
+    const r = await this.req("POST", "/api/auth/dev-login", { principalId });
+    expect(r.status).toBe(200);
+    return this;
+  }
+}
+
+let app: INestApplication;
+let base: string;
+let db: Database;
+let close: () => Promise<void>;
+let model: FakeModelGateway;
+
+async function boot(env: Record<string, string>) {
+  const config = loadPlatformConfig({ APP_ENV: "test", DEV_AUTH_ENABLED: "true", LOG_LEVEL: "fatal", ...env });
+  model = new FakeModelGateway();
+  const deps = await buildDeps({ config, db, logger: createLogger("fatal"), pingDatabase: async () => {}, model });
+  const a = await createApiApp(deps);
+  await a.listen(0, "127.0.0.1");
+  return { app: a, base: (await a.getUrl()).replace("[::1]", "127.0.0.1") };
+}
+
+beforeAll(async () => {
+  ({ db, close } = await createTestDatabase());
+  await seedFixtures(db, FIXTURES_ROOT, "cust_demo");
+  ({ app, base } = await boot({ LOG_LEVEL: "fatal" }));
+});
+
+afterAll(async () => {
+  await app?.close();
+  await close?.();
+});
+
+const as = (p: string) => new Client(base).login(p);
+const ask = async (c: Client, question: string) => {
+  const conv = await c.req("POST", "/api/conversations", { agentId: "project-assistant" });
+  expect(conv.status).toBe(201);
+  const r = await c.req("POST", `/api/conversations/${conv.json.id}/messages`, { content: question });
+  expect(r.status).toBe(201);
+  return { conversationId: conv.json.id as string, answer: r.json.assistantMessage };
+};
+
+describe("health and readiness", () => {
+  it("is live and ready without authentication", async () => {
+    const c = new Client(base);
+    expect((await c.req("GET", "/api/health")).json).toEqual({ status: "ok" });
+    const ready = await c.req("GET", "/api/ready");
+    expect(ready.status).toBe(200);
+    expect(ready.json.status).toBe("ready");
+  });
+});
+
+describe("authentication and forged identity", () => {
+  it("rejects unauthenticated access even with identity headers", async () => {
+    const c = new Client(base);
+    await c.req("GET", "/api/auth/csrf");
+    const r = await c.req("POST", "/api/knowledge/search", { query: "Atlas" }, { "x-principal-id": "alice", "x-customer-id": "cust_demo" });
+    expect(r.status).toBe(401);
+  });
+
+  it("ignores identity headers and rejects identity fields in bodies", async () => {
+    const bob = await as("bob");
+    const viaHeader = await bob.req("POST", "/api/knowledge/search", { query: "Why was Project Atlas delayed?" }, { "x-principal-id": "alice" });
+    expect(viaHeader.status).toBe(200);
+    expect(viaHeader.json.evidence).toEqual([]);
+    const viaBody = await bob.req("POST", "/api/knowledge/search", { query: "Atlas", principalId: "alice" });
+    expect(viaBody.status).toBe(400);
+    expect(viaBody.text).not.toContain("alice");
+    expect((await bob.req("GET", "/api/auth/me")).json.principalId).toBe("bob");
+  });
+
+  it("rejects forged session cookies and unknown dev principals", async () => {
+    const c = new Client(base);
+    const r = await fetch(`${base}/api/auth/me`, { headers: { cookie: "platform_session=forged-token-value" } });
+    expect(r.status).toBe(401);
+    await c.req("GET", "/api/auth/csrf");
+    expect((await c.req("POST", "/api/auth/dev-login", { principalId: "mallory" })).status).toBe(401);
+  });
+
+  it("requires a CSRF token for cookie-authenticated mutations", async () => {
+    const alice = await as("alice");
+    expect((await alice.req("POST", "/api/conversations", { agentId: "project-assistant" }, {}, { csrf: false })).status).toBe(403);
+    const crossOrigin = await alice.req("POST", "/api/conversations", { agentId: "project-assistant" }, { origin: "https://evil.example" });
+    expect(crossOrigin.status).toBe(403);
+  });
+
+  it("logout revokes the session server-side", async () => {
+    const alice = await as("alice");
+    expect((await alice.req("POST", "/api/auth/logout")).status).toBe(204);
+    expect((await alice.req("GET", "/api/auth/me")).status).toBe(401);
+  });
+});
+
+describe("knowledge search and protected documents", () => {
+  it("returns permitted evidence and no forbidden content", async () => {
+    const alice = await as("alice");
+    const r = await alice.req("POST", "/api/knowledge/search", { query: "Why was Project Atlas delayed?", limit: 10 });
+    expect(r.status).toBe(200);
+    const docs = r.json.evidence.map((e: { documentId: string }) => e.documentId);
+    expect(docs).toContain("atlas-status-2026-04");
+    expect(docs).not.toContain("atlas-contract-dispute");
+    expect(r.text).not.toContain(CANARY);
+  });
+
+  it("gives the denied principal nothing about Atlas", async () => {
+    const bob = await as("bob");
+    const r = await bob.req("POST", "/api/knowledge/search", { query: "Why was Project Atlas delayed?", limit: 10 });
+    expect(r.json.evidence).toEqual([]);
+    const notFound = await bob.req("GET", "/api/knowledge/documents/does-not-exist");
+    const forbidden = await bob.req("GET", "/api/knowledge/documents/atlas-status-2026-04");
+    expect(forbidden.status).toBe(404);
+    // Indistinguishable from a missing document (no existence or title leak).
+    expect({ ...forbidden.json, requestId: "" }).toEqual({ ...notFound.json, requestId: "" });
+    expect(forbidden.text).not.toContain("Atlas");
+  });
+
+  it("protects the restricted memo document view", async () => {
+    const alice = await as("alice");
+    expect((await alice.req("GET", "/api/knowledge/documents/atlas-contract-dispute")).status).toBe(404);
+    const carol = await as("carol");
+    const ok = await carol.req("GET", "/api/knowledge/documents/atlas-contract-dispute");
+    expect(ok.status).toBe(200);
+    expect(ok.text).toContain(CANARY);
+  });
+});
+
+describe("Project Assistant conversations", () => {
+  it("answers the Atlas delay question with resolvable citations and keeps restricted text from the model", async () => {
+    const alice = await as("alice");
+    model.calls.length = 0;
+    const { answer } = await ask(alice, "Why was Project Atlas delayed?");
+    expect(answer.status).toBe("answered");
+    expect(answer.content).toMatch(/Northwind/);
+    expect(answer.content).toMatch(/customer/i);
+    const citedDocs = answer.citations.map((c: { documentId: string }) => c.documentId);
+    expect(citedDocs).toEqual(expect.arrayContaining(["atlas-status-2026-04", "atlas-steering-2026-05-12"]));
+    expect(JSON.stringify(answer)).not.toContain(CANARY);
+    expect(JSON.stringify(model.calls)).not.toContain(CANARY);
+    expect(JSON.stringify(model.calls)).not.toContain("settlement");
+
+    for (const c of answer.citations) {
+      const r = await alice.req("GET", `/api/knowledge/evidence/${c.evidenceId}`);
+      expect(r.status).toBe(200);
+      expect(r.json.documentPath).toContain(c.documentId);
+      expect((await alice.req("GET", `/api/knowledge/documents/${c.documentId}`)).status).toBe(200);
+    }
+    // Citations are bound to the principal they were issued to.
+    const carol = await as("carol");
+    const bob = await as("bob");
+    expect((await carol.req("GET", `/api/knowledge/evidence/${answer.citations[0].evidenceId}`)).status).toBe(404);
+    expect((await bob.req("GET", `/api/knowledge/evidence/${answer.citations[0].evidenceId}`)).status).toBe(404);
+  });
+
+  it("responds honestly when evidence is insufficient", async () => {
+    const alice = await as("alice");
+    const { answer } = await ask(alice, "What was the Atlas marketing budget for 2025?");
+    expect(answer.status).toBe("insufficient_evidence");
+    expect(answer.citations).toEqual([]);
+    expect(answer.content).toMatch(/could not find enough authorized evidence/);
+  });
+
+  it("leaks no Atlas text, title or citation to the denied principal", async () => {
+    const bob = await as("bob");
+    const { answer } = await ask(bob, "Why was Project Atlas delayed?");
+    expect(answer.status).toBe("insufficient_evidence");
+    expect(answer.citations).toEqual([]);
+    for (const s of ["Northwind", "Status Report", "Steering", CANARY]) expect(JSON.stringify(answer)).not.toContain(s);
+  });
+
+  it("enforces conversation ownership", async () => {
+    const alice = await as("alice");
+    const bob = await as("bob");
+    const { conversationId } = await ask(alice, "Why was Project Atlas delayed?");
+    expect((await alice.req("GET", `/api/conversations/${conversationId}`)).status).toBe(200);
+    expect((await bob.req("GET", `/api/conversations/${conversationId}`)).status).toBe(404);
+    expect((await bob.req("POST", `/api/conversations/${conversationId}/messages`, { content: "hi" })).status).toBe(404);
+    const list = await bob.req("GET", "/api/conversations");
+    expect(list.json.map((c: { id: string }) => c.id)).not.toContain(conversationId);
+    expect((await bob.req("GET", "/api/conversations/not-a-uuid")).status).toBe(404);
+  });
+
+  it("withholds stored answers and citations after access is revoked", async () => {
+    const repos = createRepositories(db);
+    const carol = await as("carol");
+    const { conversationId, answer } = await ask(carol, "Why was Project Atlas delayed?");
+    expect(answer.status).toBe("answered");
+    await repos.principals.setGroups("cust_demo", "carol", ["all-staff"]);
+    try {
+      const after = await carol.req("GET", `/api/conversations/${conversationId}`);
+      const stored = after.json.messages.find((m: { role: string }) => m.role === "assistant");
+      expect(stored.status).toBe("withheld");
+      expect(stored.citations).toEqual([]);
+      expect(after.text).not.toContain("Northwind");
+      expect((await carol.req("GET", `/api/knowledge/evidence/${answer.citations[0].evidenceId}`)).status).toBe(404);
+    } finally {
+      await repos.principals.setGroups("cust_demo", "carol", ["all-staff", "atlas-team", "finance-legal"]);
+    }
+  });
+
+  it("hides tombstoned documents immediately", async () => {
+    const repos = createRepositories(db);
+    const alice = await as("alice");
+    await repos.catalog.tombstone("cust_demo", "atlas-status-2026-04");
+    try {
+      const r = await alice.req("POST", "/api/knowledge/search", { query: "Why was Project Atlas delayed?", limit: 10 });
+      expect(r.json.evidence.map((e: { documentId: string }) => e.documentId)).not.toContain("atlas-status-2026-04");
+      expect((await alice.req("GET", "/api/knowledge/documents/atlas-status-2026-04")).status).toBe(404);
+    } finally {
+      await seedFixtures(db, FIXTURES_ROOT, "cust_demo"); // re-publishes the fixture
+    }
+  });
+
+  it("audits without storing message content", async () => {
+    const rows = await createRepositories(db).audit.list("cust_demo", 500);
+    expect(rows.some((r) => r.action === "agent.run")).toBe(true);
+    expect(JSON.stringify(rows)).not.toContain("Why was Project Atlas delayed");
+  });
+});
+
+describe("development authentication switch", () => {
+  it("is unavailable when DEV_AUTH_ENABLED is false", async () => {
+    const off = await boot({ DEV_AUTH_ENABLED: "false" });
+    try {
+      const c = new Client(off.base);
+      await c.req("GET", "/api/auth/csrf");
+      expect((await c.req("POST", "/api/auth/dev-login", { principalId: "alice" })).status).toBe(404);
+      expect((await c.req("GET", "/api/auth/dev-principals")).status).toBe(404);
+    } finally {
+      await off.app.close();
+    }
+  });
+});

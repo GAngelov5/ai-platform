@@ -1,0 +1,45 @@
+{
+  "name": "@platform/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "@platform/source": "./src/app.ts",
+      "types": "./dist/app.d.ts",
+      "default": "./dist/app.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "node --env-file-if-exists=../../.env --conditions=@platform/source --import tsx --watch src/main.ts",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nestjs/common": "^12.1.0",
+    "@nestjs/core": "^12.1.0",
+    "@nestjs/platform-express": "^12.1.0",
+    "@platform/agent-project-assistant": "workspace:*",
+    "@platform/agents": "workspace:*",
+    "@platform/ai": "workspace:*",
+    "@platform/contracts": "workspace:*",
+    "@platform/database": "workspace:*",
+    "@platform/knowledge": "workspace:*",
+    "@platform/security": "workspace:*",
+    "pino": "^10.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.0",
+    "zod": "^4.6.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^24",
+    "tsx": "^4.20.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3",
+    "@platform/worker": "workspace:*"
+  }
+}

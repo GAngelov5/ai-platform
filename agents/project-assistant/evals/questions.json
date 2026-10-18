@@ -1,0 +1,42 @@
+{
+  "$comment": "Labeled synthetic evaluation questions for the fixture corpus (fixtures/documents).",
+  "fixtureVersion": "atlas-fixtures-2026-10-18",
+  "cases": [
+    {
+      "id": "delay-why",
+      "principal": "alice",
+      "question": "Why was Project Atlas delayed?",
+      "expect": "answered",
+      "supportingDocuments": ["atlas-status-2026-04", "atlas-steering-2026-05-12"],
+      "mustMention": ["Northwind", "customer"],
+      "mustNotContain": ["FORBIDDEN-CANARY-7Q4X", "settlement", "Contract Dispute"]
+    },
+    {
+      "id": "new-go-live",
+      "principal": "alice",
+      "question": "When is the new Atlas go-live date?",
+      "expect": "answered",
+      "supportingDocuments": ["atlas-steering-2026-05-12"],
+      "mustMention": ["15 August 2026"],
+      "mustNotContain": ["FORBIDDEN-CANARY-7Q4X"]
+    },
+    {
+      "id": "unanswerable-budget",
+      "principal": "alice",
+      "question": "What was the Atlas marketing budget for 2025?",
+      "expect": "insufficient_evidence",
+      "supportingDocuments": [],
+      "mustMention": [],
+      "mustNotContain": ["FORBIDDEN-CANARY-7Q4X"]
+    },
+    {
+      "id": "denied-principal",
+      "principal": "bob",
+      "question": "Why was Project Atlas delayed?",
+      "expect": "insufficient_evidence",
+      "supportingDocuments": [],
+      "mustMention": [],
+      "mustNotContain": ["Northwind", "Atlas Status Report", "Steering", "FORBIDDEN-CANARY-7Q4X"]
+    }
+  ]
+}

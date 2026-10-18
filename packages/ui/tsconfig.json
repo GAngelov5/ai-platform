@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "customConditions": ["@platform/source"],
+    "jsx": "react-jsx",
+    "lib": [
+      "es2023",
+      "dom"
+    ]
+  },
+  "include": [
+    "src",
+    "test"
+  ]
+}

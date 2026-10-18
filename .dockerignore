@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+.git
+.env
+.env.*
+infra/compose/ragflow/upstream
+evidence

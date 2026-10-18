@@ -1,0 +1,29 @@
+# Overlay: attach the platform API/worker to the upstream RAGFlow network.
+# The upstream project is named "docker" by default, giving network "docker_ragflow".
+services:
+  api:
+    networks: [edge, backend, ragflow]
+  worker:
+    networks: [backend, ragflow]
+  ragflow-ingest:
+    image: ai-platform/worker:${IMAGE_TAG:-dev}
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    command: ["node", "dist/main.js", "ragflow-ingest"]
+    environment:
+      APP_ENV: development
+      CUSTOMER_ID: ${CUSTOMER_ID:-cust_demo}
+      DATABASE_URL: postgres://platform:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/platform
+      KNOWLEDGE_PROVIDER: ragflow
+      RAGFLOW_BASE_URL: ${RAGFLOW_BASE_URL:?set RAGFLOW_BASE_URL}
+      RAGFLOW_API_KEY: ${RAGFLOW_API_KEY:?set RAGFLOW_API_KEY}
+      RAGFLOW_DATASET_ID: ${RAGFLOW_DATASET_ID:?set RAGFLOW_DATASET_ID}
+    networks: [backend, ragflow]
+    profiles: [ragflow-ingest]
+    restart: "no"
+
+networks:
+  ragflow:
+    external: true
+    name: ${RAGFLOW_NETWORK:-docker_ragflow}

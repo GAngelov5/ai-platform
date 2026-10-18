@@ -1,0 +1,35 @@
+{
+  "name": "@platform/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "cli": "node --env-file-if-exists=../../.env --conditions=@platform/source --import tsx src/main.ts",
+    "dev": "node --env-file-if-exists=../../.env --conditions=@platform/source --import tsx --watch src/main.ts start",
+    "start": "node dist/main.js start",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@platform/database": "workspace:*",
+    "@platform/knowledge": "workspace:*",
+    "@platform/security": "workspace:*",
+    "bullmq": "^5.0.0 || ^6.0.0",
+    "ioredis": "^5.4.0",
+    "pino": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "tsx": "^4.20.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "exports": {
+    "./seed": {
+      "@platform/source": "./src/seed.ts",
+      "types": "./dist/seed.d.ts",
+      "default": "./dist/seed.js"
+    }
+  }
+}

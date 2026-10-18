@@ -1,0 +1,147 @@
+# Base platform deployment: TLS proxy, web, API, worker, PostgreSQL, Valkey.
+# RAG backend stacks are separate overlays (see infra/compose/ragflow/).
+name: ai-platform
+
+x-app-env: &app-env
+  APP_ENV: ${APP_ENV:-development}
+  CUSTOMER_ID: ${CUSTOMER_ID:-cust_demo}
+  BRAND_NAME: ${BRAND_NAME:-Company Brain (synthetic demo)}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DATABASE_URL: postgres://platform:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/platform
+  REDIS_URL: redis://valkey:6379
+  PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://localhost:8443}
+  COOKIE_SECURE: "true"
+  AUTH_MODE: ${AUTH_MODE:-dev}
+  DEV_AUTH_ENABLED: ${DEV_AUTH_ENABLED:-false}
+  OIDC_ISSUER: ${OIDC_ISSUER:-}
+  OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+  OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+  KNOWLEDGE_PROVIDER: ${KNOWLEDGE_PROVIDER:-fixture}
+  RAGFLOW_BASE_URL: ${RAGFLOW_BASE_URL:-}
+  RAGFLOW_API_KEY: ${RAGFLOW_API_KEY:-}
+  RAGFLOW_DATASET_ID: ${RAGFLOW_DATASET_ID:-}
+  MODEL_MODE: ${MODEL_MODE:-local}
+  MODEL_PROVIDER: ${MODEL_PROVIDER:-fake}
+  MODEL_BASE_URL: ${MODEL_BASE_URL:-}
+  MODEL_NAME: ${MODEL_NAME:-}
+  MODEL_API_KEY: ${MODEL_API_KEY:-}
+  MODEL_APPROVED_ENDPOINTS: ${MODEL_APPROVED_ENDPOINTS:-}
+
+x-hardening: &hardening
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  tmpfs: ["/tmp"]
+
+services:
+  proxy:
+    image: caddy:2-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+    # Exception to non-root: the official image's binary carries a file capability
+    # that cannot be exec'd as a non-root user under no-new-privileges. All other
+    # capabilities are dropped and the root filesystem is read-only.
+    <<: *hardening
+    cap_add: [NET_BIND_SERVICE]
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
+    ports:
+      # The only end-user entry point. Bound to localhost for development.
+      - "${PROXY_BIND:-127.0.0.1}:8443:8443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [edge]
+    depends_on:
+      web: { condition: service_healthy }
+      api: { condition: service_healthy }
+    restart: unless-stopped
+    deploy: { resources: { limits: { cpus: "0.5", memory: 128M } } }
+
+  web:
+    build: { context: ../.., dockerfile: infra/docker/Dockerfile, target: web }
+    image: ai-platform/web:${IMAGE_TAG:-dev}
+    <<: *hardening
+    networks: [edge]
+    restart: unless-stopped
+    deploy: { resources: { limits: { cpus: "1", memory: 384M } } }
+
+  api:
+    build: { context: ../.., dockerfile: infra/docker/Dockerfile, target: api }
+    image: ai-platform/api:${IMAGE_TAG:-dev}
+    <<: *hardening
+    environment: *app-env
+    networks: [edge, backend]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+    deploy: { resources: { limits: { cpus: "1", memory: 512M } } }
+
+  worker:
+    build: { context: ../.., dockerfile: infra/docker/Dockerfile, target: worker }
+    image: ai-platform/worker:${IMAGE_TAG:-dev}
+    <<: *hardening
+    environment: *app-env
+    networks: [backend]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      valkey: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "dist/main.js", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy: { resources: { limits: { cpus: "0.5", memory: 384M } } }
+
+  # Controlled deployment step: apply migrations, then exit before traffic is served.
+  migrate:
+    image: ai-platform/worker:${IMAGE_TAG:-dev}
+    <<: *hardening
+    command: ["node", "dist/main.js", "migrate"]
+    environment: *app-env
+    networks: [backend]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  postgres:
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_DB: platform
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    networks: [backend]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform -d platform"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    deploy: { resources: { limits: { cpus: "1", memory: 512M } } }
+
+  valkey:
+    image: valkey/valkey:8-alpine@sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a301682fd35e1ebb4b0990a4a4a8507
+    command: ["valkey-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes: [valkey-data:/data]
+    networks: [backend]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    deploy: { resources: { limits: { cpus: "0.5", memory: 256M } } }
+
+networks:
+  edge: {}
+  # No route to the outside world for databases, queues and workers.
+  backend: { internal: true }
+
+volumes:
+  postgres-data: {}
+  valkey-data: {}
+  caddy-data: {}
+  caddy-config: {}

@@ -1,0 +1,33 @@
+# Development overlay: synthetic dev identities and localhost-only debug ports.
+# Usage: docker compose -f infra/compose/compose.yaml -f infra/compose/compose.dev.yaml up
+services:
+  api:
+    environment:
+      DEV_AUTH_ENABLED: "true"
+  # Ports are not published for containers attached only to an internal
+  # network, so development-only host access uses a separate dev network.
+  postgres:
+    ports: ["127.0.0.1:55432:5432"]
+    networks: [backend, devhost]
+  valkey:
+    ports: ["127.0.0.1:6379:6379"]
+    networks: [backend, devhost]
+  # One-shot synthetic seed (never in production: the command refuses APP_ENV=production).
+  seed:
+    image: ai-platform/worker:${IMAGE_TAG:-dev}
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    command: ["node", "dist/main.js", "seed"]
+    environment:
+      APP_ENV: development
+      CUSTOMER_ID: ${CUSTOMER_ID:-cust_demo}
+      DATABASE_URL: postgres://platform:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/platform
+    networks: [backend]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    profiles: [seed]
+    restart: "no"
+
+networks:
+  devhost: {}

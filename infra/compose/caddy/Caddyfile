@@ -1,0 +1,23 @@
+{
+	# Development TLS from Caddy's internal CA. Replace with the customer's
+	# certificate (tls /path/cert.pem /path/key.pem) for a real deployment.
+	admin off
+	auto_https disable_redirects
+	http_port 8080
+	https_port 8443
+}
+
+{$PUBLIC_HOST:localhost}:8443 {
+	tls internal
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+	handle /api/* {
+		reverse_proxy api:4000
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+}

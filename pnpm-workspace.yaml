@@ -1,0 +1,13 @@
+packages:
+  - apps/*
+  - packages/*
+  - agents/*
+
+# Supply-chain guard: only resolve versions published at least 14 days ago.
+minimumReleaseAge: 20160
+
+allowBuilds:
+  esbuild: true
+  "@swc/core": true
+  # Optional native accelerator for BullMQ; pure-JS fallback is used.
+  msgpackr-extract: false
