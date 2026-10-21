@@ -34,6 +34,11 @@ export class HealthController {
       checks.knowledge = { ok: false, detail: "health check failed" };
     }
     checks.model = { ok: true, detail: this.deps.model.descriptor.provider };
+    for (const c of this.deps.connectors.list()) {
+      // Integrations degrade gracefully: an unhealthy connector removes its tools from runs, so it does not fail readiness.
+      const h = await Promise.race([c.health(), new Promise<{ ok: boolean; detail: string }>((r) => setTimeout(() => r({ ok: false, detail: "health timeout" }), 3000))]);
+      checks[`connector:${c.id}`] = { ok: true, detail: `${h.ok ? "healthy" : "degraded"}: ${h.detail ?? ""}` };
+    }
     const ok = Object.values(checks).every((c) => c.ok);
     res.status(ok ? 200 : 503);
     return { status: ok ? "ready" : "not_ready", checks };

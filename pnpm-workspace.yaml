@@ -2,6 +2,7 @@ packages:
   - apps/*
   - packages/*
   - agents/*
+  - services/*
 
 # Supply-chain guard: only resolve versions published at least 14 days ago.
 minimumReleaseAge: 20160

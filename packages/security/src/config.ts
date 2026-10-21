@@ -41,13 +41,17 @@ const EnvSchema = z.object({
   LIGHTRAG_QUERY_MODE: z.enum(["naive", "local", "global", "hybrid", "mix"]).default("mix"),
   LIGHTRAG_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(60000),
 
+  /** JSON allowlist of MCP servers with pinned tool hashes (see packages/connectors McpServersSchema). */
+  MCP_SERVERS: z.string().optional(),
+  ACTION_PROPOSAL_TTL_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(30),
+
   MODEL_MODE: z.enum(["local", "hybrid"]).default("local"),
   MODEL_PROVIDER: z.enum(["fake", "openai-compatible"]).default("fake"),
   MODEL_BASE_URL: z.string().url().optional(),
   MODEL_NAME: z.string().optional(),
   MODEL_API_KEY: z.string().optional(),
   MODEL_APPROVED_ENDPOINTS: list.default([]),
-  MODEL_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(60000),
+  MODEL_TIMEOUT_MS: z.coerce.number().int().min(1000).max(900000).default(60000),
 });
 
 export interface PlatformConfig {
@@ -73,6 +77,7 @@ export interface PlatformConfig {
         timeoutMs: number;
         fixturesDir?: string;
       };
+  integrations: { mcpServersJson?: string; proposalTtlMinutes: number };
   model:
     | { mode: "local" | "hybrid"; provider: "fake" }
     | {
@@ -178,6 +183,24 @@ export function loadPlatformConfig(
     }
   }
 
+  if (e.MCP_SERVERS) {
+    const parsed = safeJson(e.MCP_SERVERS);
+    if (!Array.isArray(parsed)) problems.push("MCP_SERVERS must be a JSON array");
+    else {
+      for (const srv of parsed as { id?: string; url?: string }[]) {
+        const tokenVar = mcpTokenVar(String(srv?.id ?? ""));
+        const token = env[tokenVar];
+        if (!token) problems.push(`${tokenVar} is required for MCP server ${srv?.id}`);
+        else if (prod && token.length < 24) problems.push(`production ${tokenVar} must be at least 24 characters`);
+        try {
+          if (!isLocalHostname(new URL(String(srv?.url)).hostname)) problems.push(`MCP server ${srv?.id} must be on the private network`);
+        } catch {
+          problems.push(`MCP server ${srv?.id} has an invalid url`);
+        }
+      }
+    }
+  }
+
   if (problems.length) throw new ConfigurationError(problems);
 
   return {
@@ -211,6 +234,7 @@ export function loadPlatformConfig(
               fixturesDir: e.FIXTURES_DIR,
             }
           : { provider: "fixture", fixturesDir: e.FIXTURES_DIR },
+    integrations: { mcpServersJson: e.MCP_SERVERS, proposalTtlMinutes: e.ACTION_PROPOSAL_TTL_MINUTES },
     model:
       e.MODEL_PROVIDER === "openai-compatible"
         ? {
@@ -241,6 +265,9 @@ const PartitionsSchema = z
     (ps) => new Set(ps.map((p) => `${p.sourceId}|${[...new Set(p.aclGroups)].sort().join(",")}`)).size === ps.length,
     "two partitions must not share the same source and ACL set",
   );
+
+/** Secret reference for an MCP server's audience-bound token, e.g. MCP_TOKEN_ATLAS_TRACKER. */
+export const mcpTokenVar = (serverId: string) => `MCP_TOKEN_${serverId.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
 
 function safeJson(v: string): unknown {
   try {

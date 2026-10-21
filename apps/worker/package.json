@@ -17,7 +17,9 @@
     "@platform/security": "workspace:*",
     "bullmq": "^5.0.0 || ^6.0.0",
     "ioredis": "^5.4.0",
-    "pino": "^10.0.0"
+    "pino": "^10.0.0",
+    "@platform/actions": "workspace:*",
+    "@platform/connectors": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24",

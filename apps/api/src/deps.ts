@@ -1,4 +1,6 @@
-import { AgentRegistry } from "@platform/agents";
+import { buildIntegrations, type ActionService } from "@platform/actions";
+import { AgentRegistry, type CapabilityRegistry } from "@platform/agents";
+import type { ConnectorRegistry } from "@platform/connectors";
 import { AgentRuntime, FakeModelGateway, OpenAICompatibleGateway, type ModelGateway } from "@platform/ai";
 import { projectAssistant } from "@platform/agent-project-assistant";
 import { createRepositories, type Database, type Repositories } from "@platform/database";
@@ -10,7 +12,7 @@ import {
   RagflowKnowledgeAdapter,
   type KnowledgeAdapter,
 } from "@platform/knowledge";
-import type { PlatformConfig } from "@platform/security";
+import { mcpTokenVar, type PlatformConfig } from "@platform/security";
 import { fileURLToPath } from "node:url";
 import type { Logger } from "./logger.js";
 
@@ -28,6 +30,9 @@ export interface PlatformDeps {
   model: ModelGateway;
   logger: Logger;
   pingDatabase: () => Promise<void>;
+  actions: ActionService;
+  capabilities: CapabilityRegistry;
+  connectors: ConnectorRegistry;
 }
 
 export async function createKnowledgeAdapter(config: PlatformConfig): Promise<KnowledgeAdapter> {
@@ -72,6 +77,8 @@ export async function buildDeps(input: {
   pingDatabase: () => Promise<void>;
   adapter?: KnowledgeAdapter;
   model?: ModelGateway;
+  /** Secret resolver; defaults to process.env. */
+  secret?: (name: string) => string | undefined;
 }): Promise<PlatformDeps> {
   const { config, db, logger } = input;
   const repos = createRepositories(db);
@@ -91,6 +98,29 @@ export async function buildDeps(input: {
   });
   const model = input.model ?? createModelGateway(config);
   const agents = new AgentRegistry([projectAssistant]);
-  const runtime = new AgentRuntime({ knowledge, model, runs: repos.runs });
-  return { config, repos, knowledge, agents, runtime, model, logger, pingDatabase: input.pingDatabase };
+  const securityEvent = (type: string, detail: Record<string, unknown>) => {
+    logger.warn({ securityEvent: type, ...detail }, "security event");
+    void repos.audit.write({ customerId: config.customerId, action: type, outcome: "denied", detail }).catch(() => {});
+  };
+  const { actions, capabilities, connectors } = buildIntegrations({
+    db,
+    mcpServersJson: config.integrations.mcpServersJson,
+    secret: input.secret ?? ((n) => process.env[n]),
+    tokenVar: mcpTokenVar,
+    principals: repos.principals,
+    audit: repos.audit,
+    proposalTtlMinutes: config.integrations.proposalTtlMinutes,
+    onSecurityEvent: securityEvent,
+    log: (msg, detail) => logger.info(detail ?? {}, msg),
+  });
+  const runtime = new AgentRuntime({
+    knowledge,
+    model,
+    runs: repos.runs,
+    capabilities,
+    toolCalls: repos.toolCalls,
+    liveEvidence: repos.liveEvidence,
+    actions,
+  });
+  return { config, repos, knowledge, agents, runtime, model, logger, pingDatabase: input.pingDatabase, actions, capabilities, connectors };
 }

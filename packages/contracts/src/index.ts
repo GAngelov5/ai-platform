@@ -68,7 +68,8 @@ export type EvidenceResolution = z.infer<typeof EvidenceResolutionSchema>;
 // Conversations and agent answers
 // ---------------------------------------------------------------------------
 
-export const CitationSchema = z.strictObject({
+export const DocumentCitationSchema = z.strictObject({
+  kind: z.literal("document").optional(),
   evidenceId: EvidenceSchema.shape.evidenceId,
   documentId: IdSchema,
   chunkId: IdSchema,
@@ -78,10 +79,28 @@ export const CitationSchema = z.strictObject({
   location: z.string().optional(),
   excerpt: z.string(),
 });
+export type DocumentCitation = z.infer<typeof DocumentCitationSchema>;
+
+/** A value read from a live system during the run (current state, not indexed history). */
+export const LiveCitationSchema = z.strictObject({
+  kind: z.literal("live"),
+  evidenceId: z.string().regex(/^lv_[A-Za-z0-9_-]{8,64}$/),
+  connectorId: z.string(),
+  capabilityId: z.string(),
+  resourceId: z.string(),
+  title: z.string(),
+  readAt: z.iso.datetime(),
+  excerpt: z.string(),
+});
+export type LiveCitation = z.infer<typeof LiveCitationSchema>;
+
+export const CitationSchema = z.union([LiveCitationSchema, DocumentCitationSchema]);
 export type Citation = z.infer<typeof CitationSchema>;
+export const isLiveCitation = (c: Citation): c is LiveCitation => c.kind === "live";
 
 export const AnswerStatusSchema = z.enum([
   "answered",
+  "action_proposed",
   "insufficient_evidence",
   "limit_reached",
   "withheld",
@@ -96,6 +115,8 @@ export const MessageSchema = z.strictObject({
   status: AnswerStatusSchema.optional(),
   citations: z.array(CitationSchema),
   model: z.strictObject({ provider: z.string(), name: z.string() }).optional(),
+  toolCalls: z.array(z.lazy(() => ToolCallSummarySchema)).optional(),
+  proposalIds: z.array(z.string()).optional(),
   createdAt: z.iso.datetime(),
 });
 export type Message = z.infer<typeof MessageSchema>;
@@ -183,6 +204,67 @@ export const ApiErrorSchema = z.strictObject({
   issues: z.array(z.strictObject({ path: z.string(), message: z.string() })).optional(),
 });
 export type ApiError = z.infer<typeof ApiErrorSchema>;
+
+// ---------------------------------------------------------------------------
+// Tools, runs and actions
+// ---------------------------------------------------------------------------
+
+export const ToolCallSummarySchema = z.strictObject({
+  capabilityId: z.string(),
+  kind: z.enum(["read", "write"]),
+  status: z.enum(["ok", "denied", "invalid", "error", "budget_exhausted"]),
+  durationMs: z.number().int().min(0),
+  resultCount: z.number().int().min(0).optional(),
+});
+export type ToolCallSummary = z.infer<typeof ToolCallSummarySchema>;
+
+export const ActionStateSchema = z.enum([
+  "pending_approval",
+  "approved",
+  "executing",
+  "succeeded",
+  "failed",
+  "unknown",
+  "rejected",
+  "expired",
+  "cancelled",
+]);
+export type ActionState = z.infer<typeof ActionStateSchema>;
+
+export const ActionProposalViewSchema = z.strictObject({
+  id: z.string(),
+  state: ActionStateSchema,
+  capabilityId: z.string(),
+  connectorId: z.string(),
+  operation: z.string(),
+  destination: z.string(),
+  risk: z.string(),
+  /** The complete intended operation as it will be executed. */
+  payload: z.record(z.string(), z.unknown()),
+  payloadHash: z.string(),
+  conversationId: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+  decidedAt: z.iso.datetime().nullable(),
+  receipt: z.record(z.string(), z.unknown()).nullable(),
+  lastError: z.string().nullable(),
+});
+export type ActionProposalView = z.infer<typeof ActionProposalViewSchema>;
+
+export const ApproveActionRequestSchema = z.strictObject({
+  payloadHash: z.string().regex(/^[0-9a-f]{64}$/),
+});
+export type ApproveActionRequest = z.infer<typeof ApproveActionRequestSchema>;
+
+/** Server-sent run events (`text/event-stream`, one JSON object per `data:` line). */
+export const RunEventSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("run.started"), runId: z.string(), userMessage: z.lazy(() => MessageSchema) }),
+  z.strictObject({ type: z.literal("tool.started"), capabilityId: z.string(), kind: z.enum(["read", "write"]) }),
+  z.strictObject({ type: z.literal("tool.finished"), call: ToolCallSummarySchema }),
+  z.strictObject({ type: z.literal("message"), assistantMessage: z.lazy(() => MessageSchema) }),
+  z.strictObject({ type: z.literal("error"), message: z.string() }),
+]);
+export type RunEvent = z.infer<typeof RunEventSchema>;
 
 export const CSRF_HEADER = "x-csrf-token";
 export const CSRF_COOKIE = "platform_csrf";

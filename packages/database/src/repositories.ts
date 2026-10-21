@@ -5,12 +5,41 @@ import {
   auditEvents,
   conversations,
   issuedEvidence,
+  liveEvidence,
   messages,
   principals,
   sessions,
   sourceDocuments,
+  toolCalls,
   type StoredCitation,
+  type StoredToolCall,
 } from "./schema.js";
+
+export interface LiveEvidenceRecord {
+  evidenceId: string;
+  customerId: string;
+  principalId: string;
+  runId: string;
+  connectorId: string;
+  capabilityId: string;
+  resourceId: string;
+  title: string;
+  excerpt: string;
+  readAt: Date;
+}
+
+export interface ToolCallRecord {
+  runId: string;
+  customerId: string;
+  principalId: string;
+  capabilityId: string;
+  capabilityVersion: string;
+  kind: "read" | "write";
+  status: string;
+  argsHash?: string;
+  errorKind?: string;
+  durationMs: number;
+}
 
 export interface PrincipalRecord {
   id: string;
@@ -220,6 +249,28 @@ export function createRepositories(db: Database) {
       },
     },
 
+    liveEvidence: {
+      async record(rows: LiveEvidenceRecord[]): Promise<void> {
+        if (rows.length) await db.insert(liveEvidence).values(rows);
+      },
+      async get(customerId: string, evidenceId: string): Promise<LiveEvidenceRecord | undefined> {
+        const [row] = await db
+          .select()
+          .from(liveEvidence)
+          .where(and(eq(liveEvidence.customerId, customerId), eq(liveEvidence.evidenceId, evidenceId)));
+        return row;
+      },
+    },
+
+    toolCalls: {
+      async record(row: ToolCallRecord): Promise<void> {
+        await db.insert(toolCalls).values({ ...row, argsHash: row.argsHash ?? null, errorKind: row.errorKind ?? null });
+      },
+      async listForRun(runId: string) {
+        return db.select().from(toolCalls).where(eq(toolCalls.runId, runId)).orderBy(asc(toolCalls.createdAt));
+      },
+    },
+
     conversations: {
       async create(input: { customerId: string; ownerPrincipalId: string; agentId: string; title: string }) {
         const [row] = await db.insert(conversations).values(input).returning();
@@ -256,6 +307,8 @@ export function createRepositories(db: Database) {
         status?: string;
         citations?: StoredCitation[];
         model?: { provider: string; name: string };
+        toolCalls?: StoredToolCall[];
+        proposalIds?: string[];
         runId?: string;
       }) {
         const [row] = await db
@@ -264,6 +317,8 @@ export function createRepositories(db: Database) {
             ...input,
             status: input.status ?? null,
             citations: input.citations ?? [],
+            toolCalls: input.toolCalls ?? [],
+            proposalIds: input.proposalIds ?? [],
             model: input.model ?? null,
             runId: input.runId ?? null,
           })

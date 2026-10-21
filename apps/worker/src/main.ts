@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { pino } from "pino";
 import { connectDatabase, createRepositories, runMigrations, waitFor } from "@platform/database";
 import { ingestFixturesIntoRagflow, loadFixtureCorpus, RagflowClient, syncLightRagPartitions } from "@platform/knowledge";
-import { ConfigurationError, LOG_REDACT_PATHS, loadPlatformConfig, redactUrl } from "@platform/security";
+import { buildIntegrations } from "@platform/actions";
+import { fetchMcpToolPins } from "@platform/connectors";
+import { ConfigurationError, LOG_REDACT_PATHS, loadPlatformConfig, mcpTokenVar, redactUrl } from "@platform/security";
 import { seedFixtures } from "./seed.js";
 
 const FIXTURES_ROOT = process.env.FIXTURES_ROOT ?? fileURLToPath(new URL("../../../fixtures", import.meta.url));
@@ -101,6 +103,16 @@ async function main() {
       }
       return;
     }
+    case "mcp-pins": {
+      // Operator review: print live tool definitions and their pin hashes.
+      const url = process.argv[3];
+      const id = process.argv[4] ?? "atlas-tracker";
+      const token = process.env[mcpTokenVar(id)];
+      if (!url || !token) throw new Error(`usage: mcp-pins <url> [serverId]  (requires ${mcpTokenVar(id)})`);
+      const pins = await fetchMcpToolPins(url, token);
+      console.log(JSON.stringify(Object.fromEntries(pins.map((p) => [p.name, p.sha256])), null, 2));
+      return;
+    }
     case "healthcheck": {
       const c = config({ requireRedis: true });
       const { Redis } = await import("ioredis");
@@ -116,25 +128,59 @@ async function main() {
       const h = connectDatabase(c.databaseUrl!, { max: 2 });
       await waitFor("postgres", h.ping);
       const repos = createRepositories(h.db);
-      // Phase 1 shell: a single maintenance job that reports catalog health.
-      // Ingestion, ACL synchronization and workflows are later phases; durable
-      // workflow state will live in PostgreSQL, with BullMQ only dispatching.
+      const { actions } = buildIntegrations({
+        db: h.db,
+        mcpServersJson: c.integrations.mcpServersJson,
+        secret: (n) => process.env[n],
+        tokenVar: mcpTokenVar,
+        principals: repos.principals,
+        audit: repos.audit,
+        proposalTtlMinutes: c.integrations.proposalTtlMinutes,
+        onSecurityEvent: (type, detail) => log.warn({ securityEvent: type, ...detail }, "security event"),
+        log: (msg, detail) => log.info(detail ?? {}, msg),
+      });
+      // Durable state lives in PostgreSQL. BullMQ only schedules maintenance;
+      // action execution is driven by the transactional outbox.
       const worker = new Worker(
         QUEUE,
         async (job) => {
-          if (job.name !== "catalog-report") throw new Error(`unknown job ${job.name}`);
-          const docs = await repos.catalog.listAll(c.customerId);
-          const report = { documents: docs.length, tombstoned: docs.filter((d) => d.tombstoned).length };
-          log.info({ jobId: job.id, ...report }, "catalog report");
-          return report;
+          if (job.name === "catalog-report") {
+            const docs = await repos.catalog.listAll(c.customerId);
+            const report = { documents: docs.length, tombstoned: docs.filter((d) => d.tombstoned).length };
+            log.info({ jobId: job.id, ...report }, "catalog report");
+            return report;
+          }
+          if (job.name === "action-maintenance") {
+            const expired = await actions.expireStale();
+            const recovered = await actions.recoverInterrupted();
+            if (expired || recovered) log.info({ expired, recovered }, "action maintenance");
+            return { expired, recovered };
+          }
+          throw new Error(`unknown job ${job.name}`);
         },
         { connection, concurrency: 1 },
       );
       worker.on("failed", (job, err) => log.error({ jobId: job?.id, err: err.message }, "job failed"));
       const queue = new Queue(QUEUE, { connection });
       await queue.upsertJobScheduler("catalog-report-hourly", { every: 60 * 60 * 1000 }, { name: "catalog-report" });
+      await queue.upsertJobScheduler("action-maintenance", { every: 60 * 1000 }, { name: "action-maintenance" });
+      await actions.recoverInterrupted(0); // anything 'executing' at startup was interrupted
+      let stopping = false;
+      const outboxLoop = (async () => {
+        while (!stopping) {
+          try {
+            const n = await actions.processOutbox(10);
+            if (n) log.info({ processed: n }, "outbox events processed");
+          } catch (err) {
+            log.error({ err: (err as Error).message }, "outbox loop error");
+          }
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      })();
       log.info({ queue: QUEUE }, "worker started");
       const shutdown = async () => {
+        stopping = true;
+        await outboxLoop;
         await worker.close();
         await queue.close();
         await h.close();
@@ -145,7 +191,7 @@ async function main() {
       return;
     }
     default:
-      throw new Error(`unknown command ${cmd} (migrate | seed | ragflow-ingest | lightrag-sync | healthcheck | start)`);
+      throw new Error(`unknown command ${cmd} (migrate | seed | ragflow-ingest | lightrag-sync | mcp-pins | healthcheck | start)`);
   }
 }
 

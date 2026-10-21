@@ -9,15 +9,18 @@
 
 {$PUBLIC_HOST:localhost}:8443 {
 	tls internal
-	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		-Server
 	}
 	handle /api/* {
-		reverse_proxy api:4000
+		# No compression here: run progress is streamed as text/event-stream.
+		reverse_proxy api:4000 {
+			flush_interval -1
+		}
 	}
 	handle {
+		encode zstd gzip
 		reverse_proxy web:3000
 	}
 }

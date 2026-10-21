@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "customConditions": [
+      "@platform/source"
+    ]
+  },
+  "include": [
+    "src",
+    "test"
+  ]
+}

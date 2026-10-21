@@ -3,11 +3,22 @@ export interface ModelMessage {
   content: string;
 }
 
+/** A server-built tool offered to the model for one run. `execute` is the platform's guarded wrapper. */
+export interface ModelTool {
+  name: string;
+  description: string;
+  inputSchema: import("zod").ZodType;
+  execute(input: unknown, opts: { signal?: AbortSignal }): Promise<unknown>;
+}
+
 export interface GenerateRequest {
   system: string;
   messages: ModelMessage[];
   maxOutputTokens: number;
   signal?: AbortSignal;
+  tools?: ModelTool[];
+  /** Upper bound on model steps (tool rounds + final answer). */
+  maxSteps?: number;
 }
 
 export interface GenerateResult {
@@ -15,6 +26,15 @@ export interface GenerateResult {
   finishReason: string;
   usage: { inputTokens?: number; outputTokens?: number };
   model: { provider: string; name: string };
+  steps?: number;
+}
+
+/** Removes model reasoning traces (e.g. Qwen3 <think> blocks); they are never shown or stored. */
+export function stripReasoning(text: string): string {
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/^[\s\S]*?<\/think>/i, "")
+    .trim();
 }
 
 export type ModelErrorKind = "timeout" | "cancelled" | "unavailable" | "rejected" | "invalid_config";

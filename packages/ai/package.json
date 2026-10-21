@@ -16,12 +16,13 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@platform/contracts": "workspace:*",
-    "@platform/security": "workspace:*",
-    "@platform/knowledge": "workspace:*",
+    "@ai-sdk/openai-compatible": "^3.0.0",
     "@platform/agents": "workspace:*",
+    "@platform/contracts": "workspace:*",
+    "@platform/knowledge": "workspace:*",
+    "@platform/security": "workspace:*",
     "ai": "^7.0.100",
-    "@ai-sdk/openai-compatible": "^3.0.0"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^24",

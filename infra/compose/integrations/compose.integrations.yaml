@@ -1,0 +1,69 @@
+# Integrations overlay: real local model (Ollama) + allowlisted MCP tracker + approvals.
+# Use together with the LightRAG overlay (it provides Ollama and the rag network):
+#
+#   docker compose -f infra/compose/compose.yaml -f infra/compose/compose.dev.yaml \
+#     -f infra/compose/lightrag/compose.lightrag.yaml \
+#     -f infra/compose/integrations/compose.integrations.yaml up -d
+#
+# Pins: the sha256 of each reviewed MCP tool definition. If the server's tool
+# definitions change, the tool is disabled until a new pin is reviewed
+# (`node dist/main.js mcp-pins http://mcp-atlas-tracker:8080/mcp` in the worker).
+
+x-mcp-env: &mcp-env
+  MCP_SERVERS: >-
+    [{"id":"atlas-tracker","url":"http://mcp-atlas-tracker:8080/mcp","timeoutMs":15000,"pinnedTools":{
+      "tasks_list":"64df1f1cd397b9a68f9f61985281f600690d34fe13fdf3a940b875e7b7fc56f2",
+      "task_status":"15f87884badb2a52ebd8fc8c145e5b1781a53e503cae602d8e486df925934655",
+      "task_add_comment":"62fcea50f2e7b05296caafeaf3bc586dbfffa1a9939afb9eb510d63550fbf03b",
+      "task_find_comment":"3b084587549d5d1e7528910f0ffe501db9f8b2d97e06c86587ad5b99ad98cebf"}}]
+  MCP_TOKEN_ATLAS_TRACKER: ${MCP_TOKEN_ATLAS_TRACKER:?set MCP_TOKEN_ATLAS_TRACKER}
+
+services:
+  mcp-atlas-tracker:
+    build: { context: ../.., dockerfile: infra/docker/Dockerfile, target: mcp-atlas-tracker }
+    image: ai-platform/mcp-atlas-tracker:${IMAGE_TAG:-dev}
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    tmpfs: ["/tmp"]
+    environment:
+      TRACKER_TOKEN: ${MCP_TOKEN_ATLAS_TRACKER:?set MCP_TOKEN_ATLAS_TRACKER}
+    volumes: [tracker-data:/data]
+    networks: [tools]
+    restart: unless-stopped
+    deploy: { resources: { limits: { cpus: "0.5", memory: 256M } } }
+
+  api:
+    networks: [edge, backend, rag, tools]
+    environment:
+      <<: *mcp-env
+      MODEL_PROVIDER: openai-compatible
+      MODEL_MODE: local
+      MODEL_BASE_URL: http://ollama:11434/v1
+      MODEL_NAME: ${PLATFORM_MODEL_NAME:-qwen3:4b}
+      MODEL_APPROVED_ENDPOINTS: http://ollama:11434
+      MODEL_TIMEOUT_MS: "600000"
+    depends_on:
+      mcp-atlas-tracker: { condition: service_healthy }
+
+  worker:
+    networks: [backend, tools]
+    environment:
+      <<: *mcp-env
+    depends_on:
+      mcp-atlas-tracker: { condition: service_healthy }
+
+  ollama-pull:
+    command:
+      - >-
+        ollama serve >/dev/null 2>&1 & sleep 3;
+        for m in ${LIGHTRAG_EMBEDDING_MODEL:-nomic-embed-text} ${LIGHTRAG_LLM_MODEL:-qwen2.5:3b} ${PLATFORM_MODEL_NAME:-qwen3:4b}; do
+          ollama show "$$m" >/dev/null 2>&1 && echo "present: $$m" || ollama pull "$$m" || exit 1;
+        done
+
+networks:
+  # Connector network: platform <-> MCP servers. No internet route.
+  tools: { internal: true }
+
+volumes:
+  tracker-data: {}

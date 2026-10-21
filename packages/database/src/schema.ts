@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigserial,
   boolean,
   index,
   integer,
@@ -88,15 +89,35 @@ export const conversations = pgTable(
   (t) => [index("conversations_owner_idx").on(t.customerId, t.ownerPrincipalId, t.updatedAt)],
 );
 
-export interface StoredCitation {
-  evidenceId: string;
-  documentId: string;
-  chunkId: string;
-  title: string;
-  version: string;
-  indexedAt: string;
-  location?: string;
-  excerpt: string;
+export type StoredCitation =
+  | {
+      kind?: "document";
+      evidenceId: string;
+      documentId: string;
+      chunkId: string;
+      title: string;
+      version: string;
+      indexedAt: string;
+      location?: string;
+      excerpt: string;
+    }
+  | {
+      kind: "live";
+      evidenceId: string;
+      connectorId: string;
+      capabilityId: string;
+      resourceId: string;
+      title: string;
+      readAt: string;
+      excerpt: string;
+    };
+
+export interface StoredToolCall {
+  capabilityId: string;
+  kind: "read" | "write";
+  status: "ok" | "denied" | "invalid" | "error" | "budget_exhausted";
+  durationMs: number;
+  resultCount?: number;
 }
 
 export const messages = pgTable(
@@ -110,6 +131,8 @@ export const messages = pgTable(
     status: text("status"),
     citations: jsonb("citations").$type<StoredCitation[]>().notNull().default(sql`'[]'::jsonb`),
     model: jsonb("model").$type<{ provider: string; name: string }>(),
+    toolCalls: jsonb("tool_calls").$type<StoredToolCall[]>().notNull().default(sql`'[]'::jsonb`),
+    proposalIds: jsonb("proposal_ids").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     runId: uuid("run_id"),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
@@ -177,4 +200,134 @@ export const auditEvents = pgTable(
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [index("audit_events_customer_idx").on(t.customerId, t.createdAt)],
+);
+
+/** One row per tool call attempted in a run. Arguments are stored only as a hash. */
+export const toolCalls = pgTable(
+  "tool_calls",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id").notNull(),
+    customerId: text("customer_id").notNull(),
+    principalId: text("principal_id").notNull(),
+    capabilityId: text("capability_id").notNull(),
+    capabilityVersion: text("capability_version").notNull(),
+    kind: text("kind").$type<"read" | "write">().notNull(),
+    status: text("status").notNull(),
+    argsHash: text("args_hash"),
+    errorKind: text("error_kind"),
+    durationMs: integer("duration_ms").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("tool_calls_run_idx").on(t.runId)],
+);
+
+/** Live reads issued as citable evidence (lv_ ids), bound to the principal. */
+export const liveEvidence = pgTable(
+  "live_evidence",
+  {
+    evidenceId: text("evidence_id").primaryKey(),
+    customerId: text("customer_id").notNull(),
+    principalId: text("principal_id").notNull(),
+    runId: uuid("run_id").notNull(),
+    connectorId: text("connector_id").notNull(),
+    capabilityId: text("capability_id").notNull(),
+    resourceId: text("resource_id").notNull(),
+    title: text("title").notNull(),
+    excerpt: text("excerpt").notNull(),
+    readAt: ts("read_at").notNull(),
+  },
+  (t) => [index("live_evidence_principal_idx").on(t.customerId, t.principalId)],
+);
+
+export type ActionStateValue =
+  | "pending_approval"
+  | "approved"
+  | "executing"
+  | "succeeded"
+  | "failed"
+  | "unknown"
+  | "rejected"
+  | "expired"
+  | "cancelled";
+
+/** Proposed external writes. Only the ActionService changes `state`, transactionally. */
+export const actionProposals = pgTable(
+  "action_proposals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    customerId: text("customer_id").notNull(),
+    principalId: text("principal_id").notNull(),
+    conversationId: uuid("conversation_id"),
+    runId: uuid("run_id"),
+    capabilityId: text("capability_id").notNull(),
+    capabilityVersion: text("capability_version").notNull(),
+    connectorId: text("connector_id").notNull(),
+    tool: text("tool").notNull(),
+    operation: text("operation").notNull(),
+    destination: text("destination").notNull(),
+    risk: text("risk").notNull(),
+    /** Complete connector arguments, including the idempotency key. */
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    idempotencyKey: uuid("idempotency_key").notNull(),
+    policyVersion: text("policy_version").notNull(),
+    state: text("state").$type<ActionStateValue>().notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    approvedBy: text("approved_by"),
+    decidedAt: ts("decided_at"),
+    receipt: jsonb("receipt").$type<Record<string, unknown>>(),
+    lastError: text("last_error"),
+    expiresAt: ts("expires_at").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("action_proposals_idem_uq").on(t.idempotencyKey),
+    index("action_proposals_owner_idx").on(t.customerId, t.principalId, t.createdAt),
+  ],
+);
+
+export const approvals = pgTable("approvals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  proposalId: uuid("proposal_id").notNull().references(() => actionProposals.id),
+  customerId: text("customer_id").notNull(),
+  approverPrincipalId: text("approver_principal_id").notNull(),
+  decision: text("decision").$type<"approved" | "rejected">().notNull(),
+  payloadHash: text("payload_hash").notNull(),
+  policyVersion: text("policy_version").notNull(),
+  requestId: text("request_id").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+export const executionAttempts = pgTable(
+  "execution_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    proposalId: uuid("proposal_id").notNull().references(() => actionProposals.id),
+    attempt: integer("attempt").notNull(),
+    outcome: text("outcome").$type<"succeeded" | "failed" | "unknown" | "reconciled" | "skipped">(),
+    errorKind: text("error_kind"),
+    receipt: jsonb("receipt").$type<Record<string, unknown>>(),
+    startedAt: ts("started_at").notNull().defaultNow(),
+    finishedAt: ts("finished_at"),
+  },
+  (t) => [uniqueIndex("execution_attempts_uq").on(t.proposalId, t.attempt)],
+);
+
+/** Transactional outbox: written in the same transaction as the state change it announces. */
+export const outboxEvents = pgTable(
+  "outbox_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    type: text("type").notNull(),
+    aggregateId: text("aggregate_id").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    availableAt: ts("available_at").notNull().defaultNow(),
+    processedAt: ts("processed_at"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("outbox_events_dedupe_uq").on(t.type, t.aggregateId), index("outbox_events_pending_idx").on(t.processedAt, t.availableAt)],
 );

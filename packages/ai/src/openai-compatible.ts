@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { generateText } from "ai";
+import { generateText, stepCountIs, tool, type ToolSet } from "ai";
 import { assertApprovedEndpoint, type ModelMode } from "@platform/security";
-import { normalizeModelError, type GenerateRequest, type GenerateResult, type ModelGateway } from "./gateway.js";
+import { normalizeModelError, stripReasoning, type GenerateRequest, type GenerateResult, type ModelGateway } from "./gateway.js";
 
 export interface OpenAICompatibleOptions {
   baseUrl: string;
@@ -31,6 +31,14 @@ export class OpenAICompatibleGateway implements ModelGateway {
   async generate(req: GenerateRequest): Promise<GenerateResult> {
     const timeout = AbortSignal.timeout(this.o.timeoutMs);
     const signal = req.signal ? AbortSignal.any([req.signal, timeout]) : timeout;
+    const tools: ToolSet | undefined = req.tools?.length
+      ? Object.fromEntries(
+          req.tools.map((t) => [
+            t.name,
+            tool({ description: t.description, inputSchema: t.inputSchema, execute: (input: unknown, o: { abortSignal?: AbortSignal }) => t.execute(input, { signal: o.abortSignal ?? signal }) }),
+          ]),
+        )
+      : undefined;
     try {
       const res = await generateText({
         model: this.provider(this.o.modelName),
@@ -40,11 +48,14 @@ export class OpenAICompatibleGateway implements ModelGateway {
         temperature: 0,
         maxRetries: 1,
         abortSignal: signal,
+        ...(tools ? { tools, stopWhen: stepCountIs(req.maxSteps ?? 4) } : {}),
       });
+      const usage = (res as { totalUsage?: typeof res.usage }).totalUsage ?? res.usage;
       return {
-        text: res.text,
+        steps: res.steps?.length,
+        text: stripReasoning(res.text),
         finishReason: String(res.finishReason),
-        usage: { inputTokens: res.usage?.inputTokens, outputTokens: res.usage?.outputTokens },
+        usage: { inputTokens: usage?.inputTokens, outputTokens: usage?.outputTokens },
         model: this.descriptor,
       };
     } catch (err) {

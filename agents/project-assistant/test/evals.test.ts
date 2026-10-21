@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { AgentRuntime, FakeModelGateway } from "@platform/ai";
 import { FixtureKnowledgeAdapter, loadFixtureCorpus, PolicyEnforcingKnowledgeService, type IssuedEvidence } from "@platform/knowledge";
+import { CapabilityRegistry } from "@platform/agents";
 import { createTrustedContext, type Principal } from "@platform/security";
 import { projectAssistant } from "../src/index.js";
 
@@ -40,18 +41,18 @@ async function world() {
     adapter: new FixtureKnowledgeAdapter(corpus),
     policySourceIds: projectAssistant.knowledgeScopes.sourceIds,
   });
-  const runtime = new AgentRuntime({ knowledge, model, runs: { start: async () => "run", finish: async () => {} } });
-  return { runtime, model };
+  const runtime = new AgentRuntime({ knowledge, model, runs: { start: async () => "run", finish: async () => {} }, capabilities: new CapabilityRegistry() });
+  return { runtime, model, principals };
 }
 
 describe("Project Assistant labeled fixture evals (fake model)", () => {
   for (const c of evals.cases) {
     it(`${c.id}: ${c.question} as ${c.principal}`, async () => {
-      const { runtime, model } = await world();
+      const { runtime, model, principals } = await world();
       const ctx = createTrustedContext({ customerId: CUSTOMER, principalId: c.principal, policyVersion: "eval" });
-      const r = await runtime.run(ctx, { agent: projectAssistant, question: c.question });
+      const r = await runtime.run(ctx, { agent: projectAssistant, question: c.question, principalGroups: principals.get(c.principal)!.groups });
       expect(r.status).toBe(c.expect);
-      const cited = new Set(r.citations.map((x) => x.documentId));
+      const cited = new Set(r.citations.map((x) => ("documentId" in x ? x.documentId : x.resourceId)));
       for (const d of c.supportingDocuments) expect(cited, `expected citation of ${d}`).toContain(d);
       for (const m of c.mustMention) expect(r.content).toContain(m);
       const everything = JSON.stringify(r) + JSON.stringify(model.calls);

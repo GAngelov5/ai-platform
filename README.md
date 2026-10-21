@@ -12,6 +12,24 @@ slice** of the handoff. Every identity, document and answer here is synthetic.
 
 ## What works
 
+**Stage 1 integrations (ADR 0007/0008):**
+- **Context router:** the agent routes each question to indexed documents
+  (`knowledge.search`) and/or live tools (an allowlisted **MCP** tracker).
+  The per-run allowlist is agent ∩ registered capabilities ∩ user's groups ∩
+  connector health. Answers cite document evidence (`ev_`) and live reads
+  (`lv_`, with read time), and state conflicts between dated documents and live state.
+- **MCP:** official SDK client. Servers are allowlisted and tool definitions
+  pinned by hash; responses are size-bounded; each server gets its own
+  audience-bound token. A synthetic tracker MCP server runs in Compose.
+- **Approvals:** write requests become proposals and never execute directly.
+  The approval card shows the full operation; approving sends the exact
+  payload hash. The worker executes through the outbox exactly once,
+  re-authorizing first. A lost response becomes `unknown` and is reconciled.
+- **Streaming:** run progress (tools used) streams over SSE, with cancellation.
+- **Real local model** through Ollama (`qwen3:4b`). No egress: the API sits only on internal networks.
+
+**Knowledge (Phase 1–2):**
+
 - Dev sign-in as one of three synthetic principals (`alice`, `bob`, `carol`).
 - Project Assistant answers "Why was Project Atlas delayed?" with only the
   fixture-supported blockers. Each citation resolves to a protected document view.
@@ -33,10 +51,11 @@ packages/database        Drizzle schema, migrations (drizzle/), repositories, PG
 packages/security        TrustedContext, access policy, config validation, egress guard, redaction
 packages/knowledge       KnowledgeService (policy-enforcing), fixture, LightRAG v1.5.7 and RAGFlow v0.27.2 adapters
 packages/ai              ModelGateway (OpenAI-compatible via AI SDK, deterministic fake), AgentRuntime
-packages/agents          AgentDefinition schema + registry
-packages/connectors      Phase 5 placeholder (types only, no connectors)
-packages/actions         Phase 5 placeholder (types only, no actions)
-packages/ui              SourceCitation, AgentCard
+packages/agents          AgentDefinition + CapabilityRegistry (versioned capabilities, policy)
+packages/connectors      Connector registry, MCP client (pinning, bounds), Atlas tracker capability bindings
+packages/actions         ActionService: proposals, approvals, outbox execution, reconciliation
+packages/ui              SourceCitation (document/live), ApprovalCard, RunStatus, AgentCard
+services/mcp-atlas-tracker  Synthetic MCP server (live task state, idempotent comments)
 agents/project-assistant Agent definition + labeled eval questions
 agents/meeting-prep      Phase 6 placeholder (README only)
 infra/compose            Compose base, dev overlay, Caddy, LightRAG + Ollama overlay, RAGFlow overlay
@@ -45,6 +64,7 @@ fixtures/                Synthetic identities and Project Atlas documents
 docs/adr                 Architecture decisions (0001–0005)
 scripts/smoke.mjs        End-to-end demonstration check over HTTP
 scripts/lightrag-live-check.mjs  Live ACL-change / tombstone / deletion check against real LightRAG
+scripts/integration-live-check.mjs  Live router + MCP + approval + egress check (real local model)
 ```
 
 ## Prerequisites
@@ -92,6 +112,32 @@ checks apply immediately. The sync only makes the physical index catch up,
 and it confirms each deletion. How the partitions work and why is in
 [ADR 0006](docs/adr/0006-lightrag-partitioned-backend.md).
 
+## Quick start D — integrations: real local model, MCP and approvals
+
+This builds on Quick start C (same Ollama and LightRAG) and adds the MCP
+tracker and the real model. It needs the same 6 vCPU / 10 GiB VM. The first
+run pulls `qwen3:4b` (about 2.5 GB).
+
+```bash
+export POSTGRES_PASSWORD=platform_dev LIGHTRAG_API_KEY=dev-lightrag-key-0123456789 MCP_TOKEN_ATLAS_TRACKER=dev-tracker-token-0123456789abcd
+C="docker compose -f infra/compose/compose.yaml -f infra/compose/compose.dev.yaml -f infra/compose/lightrag/compose.lightrag.yaml -f infra/compose/integrations/compose.integrations.yaml"
+$C build && $C up -d
+$C --profile seed run --rm seed && $C --profile lightrag-sync run --rm lightrag-sync
+SMOKE_INSECURE_TLS=1 node scripts/integration-live-check.mjs     # ~15 min on CPU (4 real-model answers)
+```
+
+In the UI (https://localhost:8443) as **Alice**, try:
+- "What is the current status of the Atlas customer data migration task, and why was it delayed originally?"
+  The answer cites both live and document sources.
+- `Add a comment to ATLAS-180 saying "Readiness review moved to 3 November"`
+  An approval card appears. Approve it, and the card shows the receipt.
+
+As **Bob**, the tracker tools are never offered.
+
+On CPU, `qwen3:4b` takes about 2–6 minutes per answer (measured: 127–343 s). For interactive speed, use a
+GPU host, or Ollama natively on the Mac (Metal) as an approved local endpoint
+(ADR 0007).
+
 ## Quick start B — local dev servers (hot reload)
 
 ```bash
@@ -122,6 +168,10 @@ What the tests do and do not prove:
 | `packages/knowledge` **ragflow.mock** | **stubbed fetch** | request shaping, fail-closed when unscoped, error normalization. **Not** a real RAGFlow test |
 | `packages/knowledge` **lightrag.mock** | **in-memory fake LightRAG API** | partition routing, stale-placement skip, verbatim-chunk mapping, sync insert/move/delete logic |
 | `scripts/lightrag-live-check.mjs` | **real LightRAG + Ollama containers** | ACL change before/after sync, tombstone hidden immediately and then physically deleted (confirmed), restore |
+| `packages/connectors` mcp | **real MCP server in-process (HTTP)** | pinning, unpinned tools, size bound, bad token, idempotency, lost response → `ambiguous_outcome` |
+| `packages/actions` | real MCP server + PGlite | forged, modified, expired and wrong-user approvals; revoked privilege; concurrent claims; duplicate delivery; reconciliation |
+| `packages/ai` runtime | fake tool-calling model | allowlist by group and health, argument validation, budget, write→proposal, live citations, injection neutralization |
+| `scripts/integration-live-check.mjs` | **real model + LightRAG + MCP tracker** | routing, live and document citations, approval executes once, policy, injection, no egress |
 | `packages/ai` | fake model, stub knowledge | citation validation, abstention, limits, capability immutability, injection neutralization |
 | `agents/project-assistant` evals | fixture adapter + **fake model** | grounding plumbing on 4 labeled cases. **Not** real model quality |
 | `apps/api` | real NestJS + real migrations on PGlite | forged identity, CSRF, ownership, citation access, revocation, audit content |
@@ -143,6 +193,10 @@ All settings are environment variables, validated at startup by
   `MODEL_BASE_URL=http://localhost:11434/v1 MODEL_NAME=llama3.1:8b MODEL_APPROVED_ENDPOINTS=http://localhost:11434`.
   The real-model path compiles and enforces its endpoint policy, but it was
   **not exercised** in this milestone.
+- Integrations: `MCP_SERVERS` is a JSON allowlist with pinned tool hashes.
+  Each server's token comes from its own secret, `MCP_TOKEN_<SERVER_ID>`.
+  `ACTION_PROPOSAL_TTL_MINUTES` sets how long a proposal stays approvable
+  (default 30). Review pins with the worker command `mcp-pins <url> <serverId>`.
 - Branding: `BRAND_NAME`. Customer: `CUSTOMER_ID`, which must match
   `fixtures/identities.json` for seeding.
 

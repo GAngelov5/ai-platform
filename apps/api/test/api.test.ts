@@ -10,7 +10,11 @@ import { createRepositories, type Database } from "@platform/database";
 import { createTestDatabase } from "@platform/database/testing";
 import { loadPlatformConfig } from "@platform/security";
 import { seedFixtures } from "@platform/worker/seed";
-import { buildDeps, createApiApp, createLogger } from "../src/app.js";
+import { createTrackerHttpServer, TrackerStore } from "@platform/mcp-atlas-tracker";
+import { fetchMcpToolPins } from "@platform/connectors";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { buildDeps, createApiApp, createLogger, type PlatformDeps } from "../src/app.js";
 
 const CANARY = "FORBIDDEN-CANARY-7Q4X";
 const FIXTURES_ROOT = fileURLToPath(new URL("../../../fixtures", import.meta.url));
@@ -33,7 +37,13 @@ class Client {
       else this.cookies.set(kv!.slice(0, i), v);
     }
     const text = await res.text();
-    return { status: res.status, text, json: text ? JSON.parse(text) : undefined };
+    let json: any;
+    try {
+      json = text ? JSON.parse(text) : undefined;
+    } catch {
+      json = undefined; // e.g. text/event-stream
+    }
+    return { status: res.status, text, json };
   }
 
   async login(principalId: string) {
@@ -49,24 +59,37 @@ let base: string;
 let db: Database;
 let close: () => Promise<void>;
 let model: FakeModelGateway;
+let deps: PlatformDeps;
+let tracker: Server;
+let trackerStore: TrackerStore;
+let mcpEnv: Record<string, string> = {};
+const MCP_TOKEN = "tracker-test-token-0123456789";
 
 async function boot(env: Record<string, string>) {
-  const config = loadPlatformConfig({ APP_ENV: "test", DEV_AUTH_ENABLED: "true", LOG_LEVEL: "fatal", ...env });
+  const all = { APP_ENV: "test", DEV_AUTH_ENABLED: "true", LOG_LEVEL: "fatal", ...mcpEnv, ...env };
+  const config = loadPlatformConfig(all);
   model = new FakeModelGateway();
-  const deps = await buildDeps({ config, db, logger: createLogger("fatal"), pingDatabase: async () => {}, model });
-  const a = await createApiApp(deps);
+  const d = await buildDeps({ config, db, logger: createLogger("fatal"), pingDatabase: async () => {}, model, secret: (n) => all[n as keyof typeof all] });
+  const a = await createApiApp(d);
   await a.listen(0, "127.0.0.1");
-  return { app: a, base: (await a.getUrl()).replace("[::1]", "127.0.0.1") };
+  return { app: a, deps: d, base: (await a.getUrl()).replace("[::1]", "127.0.0.1") };
 }
 
 beforeAll(async () => {
   ({ db, close } = await createTestDatabase());
   await seedFixtures(db, FIXTURES_ROOT, "cust_demo");
-  ({ app, base } = await boot({ LOG_LEVEL: "fatal" }));
+  trackerStore = await new TrackerStore().load();
+  tracker = createTrackerHttpServer({ store: trackerStore, token: MCP_TOKEN });
+  const url = await new Promise<string>((r) => tracker.listen(0, "127.0.0.1", () => r(`http://127.0.0.1:${(tracker.address() as AddressInfo).port}/mcp`)));
+  const pins = Object.fromEntries((await fetchMcpToolPins(url, MCP_TOKEN)).map((t) => [t.name, t.sha256]));
+  mcpEnv = { MCP_SERVERS: JSON.stringify([{ id: "atlas-tracker", url, pinnedTools: pins }]), MCP_TOKEN_ATLAS_TRACKER: MCP_TOKEN };
+  ({ app, base, deps } = await boot({ LOG_LEVEL: "fatal" }));
 });
 
 afterAll(async () => {
   await app?.close();
+  await deps?.connectors.closeAll();
+  tracker?.close();
   await close?.();
 });
 
@@ -253,6 +276,72 @@ describe("Project Assistant conversations", () => {
     const rows = await createRepositories(db).audit.list("cust_demo", 500);
     expect(rows.some((r) => r.action === "agent.run")).toBe(true);
     expect(JSON.stringify(rows)).not.toContain("Why was Project Atlas delayed");
+  });
+});
+
+describe("integrations: context router, MCP and approvals", () => {
+  it("routes a current-status question to the live MCP tracker and cites both sources", async () => {
+    const alice = await as("alice");
+    const { answer } = await ask(alice, "What is the current status of the Atlas customer data migration?");
+    expect(answer.status).toBe("answered");
+    const live = answer.citations.filter((c: { kind?: string }) => c.kind === "live");
+    expect(live.length).toBeGreaterThan(0);
+    expect(live[0]).toMatchObject({ resourceId: "ATLAS-142", connectorId: "atlas-tracker" });
+    expect(answer.toolCalls.map((t: { capabilityId: string }) => t.capabilityId)).toEqual(expect.arrayContaining(["knowledge.search", "tracker.tasks.list", "tracker.task.status"]));
+    // Live citations resolve only for their owner.
+    expect((await alice.req("GET", `/api/live-evidence/${live[0].evidenceId}`)).status).toBe(200);
+    const carol = await as("carol");
+    expect((await carol.req("GET", `/api/live-evidence/${live[0].evidenceId}`)).status).toBe(404);
+  });
+
+  it("does not offer tracker tools to principals outside atlas-team", async () => {
+    const bob = await as("bob");
+    const caps = (await bob.req("GET", "/api/capabilities")).json.map((c: { id: string }) => c.id);
+    expect(caps).toEqual(["knowledge.search"]);
+    const { answer } = await ask(bob, "What is the current status of ATLAS-142?");
+    expect(JSON.stringify(answer)).not.toContain("ATLAS-142\",\"connectorId");
+    expect(answer.toolCalls.map((t: { capabilityId: string }) => t.capabilityId)).toEqual(["knowledge.search"]);
+  });
+
+  it("proposes a write, requires the exact hash from the owner, and executes once", async () => {
+    const alice = await as("alice");
+    const { answer } = await ask(alice, 'Add a comment to ATLAS-180 saying "Readiness review moved to 3 November"');
+    expect(answer.status).toBe("action_proposed");
+    const [id] = answer.proposalIds;
+    const p = (await alice.req("GET", `/api/actions/${id}`)).json;
+    expect(p).toMatchObject({ state: "pending_approval", operation: "Add comment to tracker task ATLAS-180", payload: { text: "Readiness review moved to 3 November" } });
+    const before = trackerStore.get("ATLAS-180")!.comments.length;
+
+    const bob = await as("bob");
+    expect((await bob.req("GET", `/api/actions/${id}`)).status).toBe(404);
+    expect((await bob.req("POST", `/api/actions/${id}/approve`, { payloadHash: p.payloadHash })).status).toBe(404);
+    expect((await alice.req("POST", `/api/actions/${id}/approve`, { payloadHash: "0".repeat(64) })).status).toBe(409);
+    expect((await alice.req("POST", `/api/actions/${id}/approve`, { payloadHash: p.payloadHash }, {}, { csrf: false })).status).toBe(403);
+    expect(trackerStore.get("ATLAS-180")!.comments.length).toBe(before); // nothing executed yet
+
+    const ok = await alice.req("POST", `/api/actions/${id}/approve`, { payloadHash: p.payloadHash });
+    expect(ok.json.state).toBe("approved");
+    await deps.actions.processOutbox(); // the worker's job
+    await deps.actions.processOutbox();
+    const done = (await alice.req("GET", `/api/actions/${id}`)).json;
+    expect(done.state).toBe("succeeded");
+    expect(trackerStore.get("ATLAS-180")!.comments.length).toBe(before + 1);
+    expect((await alice.req("POST", `/api/actions/${id}/approve`, { payloadHash: p.payloadHash })).status).toBe(409);
+  });
+
+  it("streams run events and the validated final message", async () => {
+    const alice = await as("alice");
+    const conv = await alice.req("POST", "/api/conversations", { agentId: "project-assistant" });
+    const r = await alice.req("POST", `/api/conversations/${conv.json.id}/messages/stream`, { content: "What is the current status of ATLAS-171?" });
+    expect(r.status).toBe(200);
+    const events = r.text.split("\n\n").filter((l) => l.startsWith("data: ")).map((l) => JSON.parse(l.slice(6)));
+    const types = events.map((e) => e.type);
+    expect(types[0]).toBe("run.started");
+    expect(types).toContain("tool.started");
+    expect(types).toContain("tool.finished");
+    expect(types.at(-1)).toBe("message");
+    // The planted injection in ATLAS-171 must not cause a proposal.
+    expect(events.at(-1).assistantMessage.proposalIds).toEqual([]);
   });
 });
 

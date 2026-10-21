@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import type { NextFunction, Response } from "express";
 import { AuthGuard } from "./auth/guard.js";
 import { parseCookies, type PlatformRequest } from "./auth/http.js";
+import { ActionsController } from "./controllers/actions.controller.js";
 import { AuthController } from "./controllers/auth.controller.js";
 import { ConversationsController } from "./controllers/conversations.controller.js";
 import { HealthController } from "./controllers/health.controller.js";
@@ -22,7 +23,7 @@ class AppModule {
   static register(deps: PlatformDeps): DynamicModule {
     return {
       module: AppModule,
-      controllers: [HealthController, AuthController, KnowledgeController, ConversationsController],
+      controllers: [HealthController, AuthController, KnowledgeController, ConversationsController, ActionsController],
       providers: [{ provide: DEPS, useValue: deps }],
     };
   }

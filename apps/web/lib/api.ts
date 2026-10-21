@@ -46,3 +46,36 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   if (!res.ok) throw new ApiRequestError(res.status, json as ApiError | undefined);
   return json as T;
 }
+
+/** POSTs and consumes a `text/event-stream` response, calling onEvent per `data:` JSON line. */
+export async function apiStream<E>(path: string, body: unknown, onEvent: (e: E) => void, signal?: AbortSignal): Promise<void> {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { [CSRF_HEADER]: await ensureCsrf(), "content-type": "application/json", accept: "text/event-stream" },
+    credentials: "same-origin",
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    let json: ApiError | undefined;
+    try {
+      json = (await res.json()) as ApiError;
+    } catch {
+      json = undefined;
+    }
+    throw new ApiRequestError(res.status, json);
+  }
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += value;
+    let i: number;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const frame = buf.slice(0, i);
+      buf = buf.slice(i + 2);
+      for (const line of frame.split("\n")) if (line.startsWith("data: ")) onEvent(JSON.parse(line.slice(6)) as E);
+    }
+  }
+}

@@ -14,7 +14,7 @@ RUN pnpm install --frozen-lockfile
 
 # ---- build-server: compile API, worker and their workspace dependencies -------
 FROM deps AS build-server
-RUN pnpm exec turbo run build --filter=@platform/api... --filter=@platform/worker...
+RUN pnpm exec turbo run build --filter=@platform/api... --filter=@platform/worker... --filter=@platform/mcp-atlas-tracker...
 
 # ---- build-web: compile the Next.js app ------------------------------------------
 FROM deps AS build-web
@@ -23,7 +23,7 @@ RUN pnpm exec turbo run build --filter=@platform/web...
 # ---- prod: server tree without devDependencies ---------------------------------
 FROM build-server AS prod
 RUN pnpm install --frozen-lockfile --prod \
- && rm -rf apps/web packages/*/src apps/*/src agents/*/src .turbo
+ && rm -rf apps/web packages/*/src apps/*/src agents/*/src services/*/src .turbo
 
 # ---- api ------------------------------------------------------------------------
 FROM base AS api
@@ -43,6 +43,18 @@ COPY --from=prod --chown=node:node /repo /repo
 USER node
 WORKDIR /repo/apps/worker
 CMD ["node", "dist/main.js", "start"]
+
+# ---- synthetic Atlas tracker MCP server (test integration target) ------------
+FROM base AS mcp-atlas-tracker
+ENV NODE_ENV=production PORT=8080 TRACKER_DATA_FILE=/data/tracker.json
+COPY --from=prod --chown=node:node /repo /repo
+RUN mkdir -p /data && chown node:node /data
+USER node
+WORKDIR /repo/services/mcp-atlas-tracker
+EXPOSE 8080
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=6 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+CMD ["node", "dist/main.js"]
 
 # ---- web (Next.js standalone output) ---------------------------------------------
 FROM base AS web

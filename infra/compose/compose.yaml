@@ -50,7 +50,7 @@ services:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
-    networks: [edge]
+    networks: [ingress, edge]
     depends_on:
       web: { condition: service_healthy }
       api: { condition: service_healthy }
@@ -136,7 +136,10 @@ services:
     deploy: { resources: { limits: { cpus: "0.5", memory: 256M } } }
 
 networks:
-  edge: {}
+  # Only the TLS proxy is attached to a routable network (for the published port).
+  ingress: {}
+  # Proxy <-> web/API. Internal: the API has no outbound internet route.
+  edge: { internal: true }
   # No route to the outside world for databases, queues and workers.
   backend: { internal: true }
 

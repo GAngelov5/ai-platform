@@ -1,4 +1,5 @@
 import { Catch, HttpException, type ArgumentsHost, type ExceptionFilter } from "@nestjs/common";
+import { ActionConflictError } from "@platform/actions";
 import { KnowledgeBackendError } from "@platform/knowledge";
 import { NotFoundOrForbiddenError, UnauthenticatedError } from "@platform/security";
 import type { Response } from "express";
@@ -25,6 +26,7 @@ export class PlatformErrorFilter implements ExceptionFilter {
         issues: err.issues.map((i) => ({ path: i.path.join(".") || "(body)", message: i.code === "unrecognized_keys" ? "unrecognized field(s)" : i.message })),
       });
     }
+    if (err instanceof ActionConflictError) return send(409, { error: err.reason, message: err.message });
     if (err instanceof NotFoundOrForbiddenError) return send(404, { error: "not_found", message: "Not found" });
     if (err instanceof UnauthenticatedError) return send(401, { error: "unauthenticated", message: "Authentication required" });
     if (err instanceof KnowledgeBackendError) {
