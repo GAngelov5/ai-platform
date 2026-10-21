@@ -1,6 +1,7 @@
 # ADR 0003 — KnowledgeService, platform-owned ACL catalog, RAGFlow adapter
 
 Status: accepted for Phase 1; **RAGFlow selection gate not yet passed** · Date: 2026-10-18
+Amended by ADR 0006 (2026-10-19): LightRAG v1.5.7 added as the live-verified backend.
 
 ## Decision
 

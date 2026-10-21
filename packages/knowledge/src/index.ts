@@ -6,3 +6,7 @@ export * from "./fixture/adapter.js";
 export * from "./ragflow/client.js";
 export * from "./ragflow/adapter.js";
 export * from "./ragflow/ingest.js";
+export * from "./lightrag/client.js";
+export * from "./lightrag/partitions.js";
+export * from "./lightrag/adapter.js";
+export * from "./lightrag/sync.js";

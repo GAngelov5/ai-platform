@@ -30,12 +30,16 @@ const EnvSchema = z.object({
   OIDC_CLIENT_ID: z.string().optional(),
   OIDC_CLIENT_SECRET: z.string().optional(),
 
-  KNOWLEDGE_PROVIDER: z.enum(["fixture", "ragflow"]).default("fixture"),
+  KNOWLEDGE_PROVIDER: z.enum(["fixture", "ragflow", "lightrag"]).default("fixture"),
   FIXTURES_DIR: z.string().optional(),
   RAGFLOW_BASE_URL: z.string().url().optional(),
   RAGFLOW_API_KEY: z.string().optional(),
   RAGFLOW_DATASET_ID: z.string().regex(/^[A-Za-z0-9_-]+$/).optional(),
   RAGFLOW_TIMEOUT_MS: z.coerce.number().int().min(500).max(60000).default(15000),
+  LIGHTRAG_PARTITIONS: z.string().optional(),
+  LIGHTRAG_API_KEY: z.string().optional(),
+  LIGHTRAG_QUERY_MODE: z.enum(["naive", "local", "global", "hybrid", "mix"]).default("mix"),
+  LIGHTRAG_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(60000),
 
   MODEL_MODE: z.enum(["local", "hybrid"]).default("local"),
   MODEL_PROVIDER: z.enum(["fake", "openai-compatible"]).default("fake"),
@@ -60,7 +64,15 @@ export interface PlatformConfig {
     | { mode: "oidc"; devAuthEnabled: false; issuer: string; clientId: string; clientSecret: string };
   knowledge:
     | { provider: "fixture"; fixturesDir?: string }
-    | { provider: "ragflow"; baseUrl: string; apiKey: string; datasetId: string; timeoutMs: number };
+    | { provider: "ragflow"; baseUrl: string; apiKey: string; datasetId: string; timeoutMs: number }
+    | {
+        provider: "lightrag";
+        partitions: { id: string; url: string; sourceId: string; aclGroups: string[] }[];
+        apiKey: string;
+        queryMode: "naive" | "local" | "global" | "hybrid" | "mix";
+        timeoutMs: number;
+        fixturesDir?: string;
+      };
   model:
     | { mode: "local" | "hybrid"; provider: "fake" }
     | {
@@ -130,6 +142,24 @@ export function loadPlatformConfig(
     }
   }
 
+  let lightragPartitions: { id: string; url: string; sourceId: string; aclGroups: string[] }[] = [];
+  if (e.KNOWLEDGE_PROVIDER === "lightrag") {
+    if (!e.LIGHTRAG_API_KEY) problems.push("LIGHTRAG_API_KEY is required when KNOWLEDGE_PROVIDER=lightrag");
+    if (prod && e.LIGHTRAG_API_KEY && e.LIGHTRAG_API_KEY.length < 24) problems.push("production LIGHTRAG_API_KEY must be at least 24 characters");
+    if (!e.LIGHTRAG_PARTITIONS) problems.push("LIGHTRAG_PARTITIONS is required when KNOWLEDGE_PROVIDER=lightrag");
+    else {
+      const parsedParts = PartitionsSchema.safeParse(safeJson(e.LIGHTRAG_PARTITIONS));
+      if (!parsedParts.success) {
+        problems.push(`LIGHTRAG_PARTITIONS: ${parsedParts.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
+      } else {
+        lightragPartitions = parsedParts.data;
+        for (const p of lightragPartitions) {
+          if (!isLocalHostname(new URL(p.url).hostname)) problems.push(`LIGHTRAG partition ${p.id} must point at the private network`);
+        }
+      }
+    }
+  }
+
   // --- Model -------------------------------------------------------------------
   if (prod && e.MODEL_PROVIDER === "fake") problems.push("production must not use the fake model provider");
   if (e.MODEL_PROVIDER === "openai-compatible") {
@@ -171,7 +201,16 @@ export function loadPlatformConfig(
     knowledge:
       e.KNOWLEDGE_PROVIDER === "ragflow"
         ? { provider: "ragflow", baseUrl: e.RAGFLOW_BASE_URL!, apiKey: e.RAGFLOW_API_KEY!, datasetId: e.RAGFLOW_DATASET_ID!, timeoutMs: e.RAGFLOW_TIMEOUT_MS }
-        : { provider: "fixture", fixturesDir: e.FIXTURES_DIR },
+        : e.KNOWLEDGE_PROVIDER === "lightrag"
+          ? {
+              provider: "lightrag",
+              partitions: lightragPartitions,
+              apiKey: e.LIGHTRAG_API_KEY!,
+              queryMode: e.LIGHTRAG_QUERY_MODE,
+              timeoutMs: e.LIGHTRAG_TIMEOUT_MS,
+              fixturesDir: e.FIXTURES_DIR,
+            }
+          : { provider: "fixture", fixturesDir: e.FIXTURES_DIR },
     model:
       e.MODEL_PROVIDER === "openai-compatible"
         ? {
@@ -185,6 +224,30 @@ export function loadPlatformConfig(
           }
         : { mode: e.MODEL_MODE, provider: "fake" },
   };
+}
+
+const PartitionsSchema = z
+  .array(
+    z.strictObject({
+      id: z.string().regex(/^[A-Za-z0-9_]{1,64}$/),
+      url: z.string().url(),
+      sourceId: z.string().min(1),
+      aclGroups: z.array(z.string().min(1)).min(1),
+    }),
+  )
+  .min(1)
+  .refine((ps) => new Set(ps.map((p) => p.id)).size === ps.length, "partition ids must be unique")
+  .refine(
+    (ps) => new Set(ps.map((p) => `${p.sourceId}|${[...new Set(p.aclGroups)].sort().join(",")}`)).size === ps.length,
+    "two partitions must not share the same source and ACL set",
+  );
+
+function safeJson(v: string): unknown {
+  try {
+    return JSON.parse(v);
+  } catch {
+    return undefined;
+  }
 }
 
 function safePassword(url: string): string | undefined {

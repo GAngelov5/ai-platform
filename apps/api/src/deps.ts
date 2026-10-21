@@ -4,6 +4,7 @@ import { projectAssistant } from "@platform/agent-project-assistant";
 import { createRepositories, type Database, type Repositories } from "@platform/database";
 import {
   FixtureKnowledgeAdapter,
+  LightRagKnowledgeAdapter,
   loadFixtureCorpus,
   PolicyEnforcingKnowledgeService,
   RagflowKnowledgeAdapter,
@@ -33,6 +34,18 @@ export async function createKnowledgeAdapter(config: PlatformConfig): Promise<Kn
   if (config.knowledge.provider === "ragflow") {
     const k = config.knowledge;
     return new RagflowKnowledgeAdapter({ baseUrl: k.baseUrl, apiKey: k.apiKey, datasetId: k.datasetId, timeoutMs: k.timeoutMs });
+  }
+  if (config.knowledge.provider === "lightrag") {
+    const k = config.knowledge;
+    // Document views are served from the platform's ingestion copy (synthetic fixtures here).
+    const corpus = new FixtureKnowledgeAdapter(await loadFixtureCorpus(k.fixturesDir ?? DEFAULT_FIXTURES_DIR));
+    return new LightRagKnowledgeAdapter({
+      partitions: k.partitions,
+      apiKey: k.apiKey,
+      timeoutMs: k.timeoutMs,
+      queryMode: k.queryMode,
+      documentContent: (doc) => corpus.getDocumentChunks(doc),
+    });
   }
   return new FixtureKnowledgeAdapter(await loadFixtureCorpus(config.knowledge.fixturesDir ?? DEFAULT_FIXTURES_DIR));
 }

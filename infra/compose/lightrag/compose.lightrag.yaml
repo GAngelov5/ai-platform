@@ -1,0 +1,158 @@
+# LightRAG overlay: one LightRAG server per access partition + local Ollama.
+#
+# Usage (from repo root):
+#   docker compose -f infra/compose/compose.yaml -f infra/compose/compose.dev.yaml \
+#     -f infra/compose/lightrag/compose.lightrag.yaml up -d
+#
+# Why one server per partition: LightRAG merges entity/relation summaries
+# across every document in a workspace and has no per-document query filter.
+# A partition therefore holds only documents with identical source and ACL,
+# so nothing a principal may not read can be blended into what they retrieve.
+# See docs/adr/0006-lightrag-partitioned-backend.md.
+
+x-lightrag: &lightrag
+  image: ghcr.io/hkuds/lightrag:v1.5.7@sha256:5bdbd524931b011df246fe20888d110cef691e6804c12cde636a2b746d7de27e
+  # Run directly as the image's non-root "lightrag" user (uid 1000): the
+  # entrypoint then skips its root chown + gosu step, so no capabilities are needed.
+  user: "1000:1000"
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  networks: [rag]
+  depends_on:
+    ollama: { condition: service_healthy }
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9621/health', timeout=3).status==200 else 1)"]
+    interval: 10s
+    timeout: 5s
+    retries: 12
+    start_period: 30s
+  deploy: { resources: { limits: { cpus: "1", memory: 768M } } }
+
+x-lightrag-env: &lightrag-env
+  HOST: "0.0.0.0"
+  PORT: "9621"
+  WORKING_DIR: /app/data/rag_storage
+  INPUT_DIR: /app/data/inputs
+  LIGHTRAG_API_KEY: ${LIGHTRAG_API_KEY:?set LIGHTRAG_API_KEY}
+  # Require the API key on every route, including the Ollama-emulation /api/*.
+  WHITELIST_PATHS: /health
+  LLM_BINDING: ollama
+  LLM_BINDING_HOST: http://ollama:11434
+  LLM_MODEL: ${LIGHTRAG_LLM_MODEL:-qwen2.5:3b}
+  OLLAMA_LLM_NUM_CTX: "8192"
+  # Small local models can loop; cap output so one extraction cannot stall the
+  # pipeline for minutes (default ~9000 tokens). Extraction for these docs is far smaller.
+  OLLAMA_LLM_NUM_PREDICT: "1500"
+  MAX_TOTAL_TOKENS: "6000"
+  LLM_TIMEOUT: "600"
+  MAX_ASYNC: "2"
+  MAX_PARALLEL_INSERT: "1"
+  EMBEDDING_BINDING: ollama
+  EMBEDDING_BINDING_HOST: http://ollama:11434
+  EMBEDDING_MODEL: ${LIGHTRAG_EMBEDDING_MODEL:-nomic-embed-text}
+  EMBEDDING_DIM: "768"
+  EMBEDDING_TOKEN_LIMIT: "2048"
+  OLLAMA_EMBEDDING_NUM_CTX: "2048"
+  CHUNK_SIZE: "300"
+  CHUNK_OVERLAP_SIZE: "50"
+  SUMMARY_LANGUAGE: English
+  ENABLE_LLM_CACHE: "true"
+  ENABLE_LLM_CACHE_FOR_EXTRACT: "true"
+
+services:
+  ollama:
+    image: ollama/ollama:0.40.0@sha256:1bef639749741b375e9a1eb2c1346fb57ce52f5432de1f74846e44ccc18e1687
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      OLLAMA_KEEP_ALIVE: 24h
+      OLLAMA_NUM_PARALLEL: "2"
+      OLLAMA_MAX_LOADED_MODELS: "2"
+    volumes: [ollama-models:/root/.ollama]
+    networks: [rag]
+    depends_on:
+      ollama-pull: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+    deploy: { resources: { limits: { cpus: "4", memory: 5G } } }
+
+  # One-shot model download. The only container in this overlay with internet
+  # access; runtime model serving and LightRAG stay on the internal rag network.
+  ollama-pull:
+    image: ollama/ollama:0.40.0@sha256:1bef639749741b375e9a1eb2c1346fb57ce52f5432de1f74846e44ccc18e1687
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        ollama serve >/dev/null 2>&1 & sleep 3;
+        for m in ${LIGHTRAG_EMBEDDING_MODEL:-nomic-embed-text} ${LIGHTRAG_LLM_MODEL:-qwen2.5:3b}; do
+          ollama show "$$m" >/dev/null 2>&1 && echo "present: $$m" || ollama pull "$$m" || exit 1;
+        done
+    volumes: [ollama-models:/root/.ollama]
+    networks: [model-download]
+    restart: "no"
+
+  lightrag-handbook:
+    <<: *lightrag
+    environment: { <<: *lightrag-env, WORKSPACE: p_handbook_all_staff }
+    volumes: [lightrag-handbook:/app/data]
+
+  lightrag-atlas-team:
+    <<: *lightrag
+    environment: { <<: *lightrag-env, WORKSPACE: p_atlas_team }
+    volumes: [lightrag-atlas-team:/app/data]
+
+  lightrag-atlas-finlegal:
+    <<: *lightrag
+    environment: { <<: *lightrag-env, WORKSPACE: p_atlas_finance_legal }
+    volumes: [lightrag-atlas-finlegal:/app/data]
+
+  api:
+    networks: [edge, backend, rag]
+    environment:
+      KNOWLEDGE_PROVIDER: lightrag
+      LIGHTRAG_API_KEY: ${LIGHTRAG_API_KEY:?set LIGHTRAG_API_KEY}
+      LIGHTRAG_PARTITIONS: &partitions >-
+        [{"id":"p_handbook_all_staff","url":"http://lightrag-handbook:9621","sourceId":"company-handbook","aclGroups":["all-staff"]},
+         {"id":"p_atlas_team","url":"http://lightrag-atlas-team:9621","sourceId":"atlas-project-docs","aclGroups":["atlas-team"]},
+         {"id":"p_atlas_finance_legal","url":"http://lightrag-atlas-finlegal:9621","sourceId":"atlas-project-docs","aclGroups":["finance-legal"]}]
+    depends_on:
+      lightrag-handbook: { condition: service_healthy }
+      lightrag-atlas-team: { condition: service_healthy }
+      lightrag-atlas-finlegal: { condition: service_healthy }
+
+  # One-shot: reconcile the catalog into LightRAG partitions (insert, move on
+  # ACL change, delete on tombstone). Run after `seed`.
+  lightrag-sync:
+    image: ai-platform/worker:${IMAGE_TAG:-dev}
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    command: ["node", "dist/main.js", "lightrag-sync"]
+    environment:
+      APP_ENV: development
+      CUSTOMER_ID: ${CUSTOMER_ID:-cust_demo}
+      DATABASE_URL: postgres://platform:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/platform
+      KNOWLEDGE_PROVIDER: lightrag
+      LIGHTRAG_API_KEY: ${LIGHTRAG_API_KEY:?set LIGHTRAG_API_KEY}
+      LIGHTRAG_PARTITIONS: *partitions
+    networks: [backend, rag]
+    depends_on:
+      lightrag-handbook: { condition: service_healthy }
+      lightrag-atlas-team: { condition: service_healthy }
+      lightrag-atlas-finlegal: { condition: service_healthy }
+    profiles: [lightrag-sync]
+    restart: "no"
+
+networks:
+  rag: { internal: true }
+  model-download: {}
+
+volumes:
+  ollama-models: {}
+  lightrag-handbook: {}
+  lightrag-atlas-team: {}
+  lightrag-atlas-finlegal: {}

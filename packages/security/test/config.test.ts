@@ -69,6 +69,19 @@ describe("platform configuration", () => {
     expect(problems({ ...prodBase, ...hosted, MODEL_MODE: "hybrid" })).toEqual([]);
   });
 
+  it("validates LightRAG partitions", () => {
+    const lr = { KNOWLEDGE_PROVIDER: "lightrag", LIGHTRAG_API_KEY: "k", DATABASE_URL: "postgres://u:p@db/x" };
+    const part = (o: object) => JSON.stringify([{ id: "p_a", url: "http://lightrag-a:9621", sourceId: "s", aclGroups: ["g"], ...o }]);
+    expect(problems({ ...lr, LIGHTRAG_PARTITIONS: part({}) })).toEqual([]);
+    expect(problems({ ...lr, LIGHTRAG_PARTITIONS: part({ url: "https://lightrag.example.com" }) }).join()).toMatch(/private network/);
+    expect(problems({ ...lr, LIGHTRAG_PARTITIONS: "not json" }).join()).toMatch(/LIGHTRAG_PARTITIONS/);
+    const dup = JSON.stringify([
+      { id: "p_a", url: "http://a:9621", sourceId: "s", aclGroups: ["g", "h"] },
+      { id: "p_b", url: "http://b:9621", sourceId: "s", aclGroups: ["h", "g"] },
+    ]);
+    expect(problems({ ...lr, LIGHTRAG_PARTITIONS: dup }).join()).toMatch(/same source and ACL/);
+  });
+
   it("treats empty optional values as unset", () => {
     expect(() => loadPlatformConfig({ OIDC_ISSUER: "", RAGFLOW_BASE_URL: "", MODEL_BASE_URL: " " })).not.toThrow();
   });

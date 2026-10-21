@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { pino } from "pino";
 import { connectDatabase, createRepositories, runMigrations, waitFor } from "@platform/database";
-import { ingestFixturesIntoRagflow, loadFixtureCorpus, RagflowClient } from "@platform/knowledge";
+import { ingestFixturesIntoRagflow, loadFixtureCorpus, RagflowClient, syncLightRagPartitions } from "@platform/knowledge";
 import { ConfigurationError, LOG_REDACT_PATHS, loadPlatformConfig, redactUrl } from "@platform/security";
 import { seedFixtures } from "./seed.js";
 
@@ -72,6 +72,35 @@ async function main() {
       }
       return;
     }
+    case "lightrag-sync": {
+      const c = config({ requireDatabase: true });
+      if (c.knowledge.provider !== "lightrag") throw new Error("set KNOWLEDGE_PROVIDER=lightrag and LIGHTRAG_* to sync");
+      const k = c.knowledge;
+      const h = connectDatabase(c.databaseUrl!, { max: 1 });
+      try {
+        const repos = createRepositories(h.db);
+        // Synthetic milestone: the ingestion copy of each document is the fixture file.
+        const corpus = new Map((await loadFixtureCorpus(join(FIXTURES_ROOT, "documents"))).map((d) => [d.documentId, d]));
+        const report = await syncLightRagPartitions(
+          k.partitions,
+          { apiKey: k.apiKey, timeoutMs: k.timeoutMs },
+          {
+            listAll: () => repos.catalog.listAll(c.customerId),
+            setExternalRef: (documentId, ref) => repos.catalog.setExternalRef(c.customerId, documentId, ref),
+            content: async (doc) => {
+              const fx = corpus.get(doc.documentId);
+              return fx && fx.version === doc.version ? fx.body : undefined;
+            },
+          },
+          (m) => log.info(m),
+        );
+        log.info(report, "lightrag sync complete");
+        if (report.failed.length || !report.deletionVerified) process.exitCode = 2;
+      } finally {
+        await h.close();
+      }
+      return;
+    }
     case "healthcheck": {
       const c = config({ requireRedis: true });
       const { Redis } = await import("ioredis");
@@ -116,7 +145,7 @@ async function main() {
       return;
     }
     default:
-      throw new Error(`unknown command ${cmd} (migrate | seed | ragflow-ingest | healthcheck | start)`);
+      throw new Error(`unknown command ${cmd} (migrate | seed | ragflow-ingest | lightrag-sync | healthcheck | start)`);
   }
 }
 
