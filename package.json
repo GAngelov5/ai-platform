@@ -15,7 +15,8 @@
     "db:seed": "pnpm --filter @platform/worker run cli seed",
     "smoke": "node scripts/smoke.mjs",
     "live:lightrag": "node scripts/lightrag-live-check.mjs",
-    "live:integrations": "node scripts/integration-live-check.mjs"
+    "live:integrations": "node scripts/integration-live-check.mjs",
+    "dev:full": "turbo run dev --filter=@platform/api --filter=@platform/web --filter=@platform/worker --filter=@platform/mcp-atlas-tracker"
   },
   "devDependencies": {
     "turbo": "^2.11.7",

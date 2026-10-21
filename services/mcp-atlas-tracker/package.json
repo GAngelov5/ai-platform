@@ -15,7 +15,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
     "start": "node dist/main.js",
-    "dev": "node --conditions=@platform/source --import tsx src/main.ts"
+    "dev": "node --env-file-if-exists=../../.env --conditions=@platform/source --import tsx --watch src/main.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0",

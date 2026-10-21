@@ -10,3 +10,4 @@ coverage/
 infra/compose/ragflow/upstream/
 evidence/
 next-env.d.ts
+.local/

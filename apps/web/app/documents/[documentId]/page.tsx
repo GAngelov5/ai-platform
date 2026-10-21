@@ -30,24 +30,25 @@ export default function DocumentPage({ params }: { params: Promise<{ documentId:
 
   return (
     <>
-      <Header me={me} config={config} onLogout={refresh} />
-      <main className="mx-auto max-w-3xl px-4 py-8">
+      <Header me={me} config={config} onLogout={refresh} active="assistants" />
+      <main className="mx-auto max-w-3xl px-6 py-10">
         {me === null && <p>Please sign in.</p>}
-        {state === "loading" && me && <p className="text-slate-500">Loading…</p>}
+        {state === "loading" && me && <p className="text-muted">Loading…</p>}
         {state === "unavailable" && <p role="alert">This document is not available. It may not exist, or you may not have access.</p>}
         {doc && (
           <article>
-            <h1 className="text-2xl font-semibold">{doc.title}</h1>
-            <p className="mt-1 text-sm text-slate-500">
+            <a href="/chat" className="text-sm font-semibold">Back to Project assistant</a>
+            <h1 className="mt-2 text-[26px] font-bold tracking-tight">{doc.title}</h1>
+            <p className="mt-1 text-sm text-muted">
               source {doc.sourceId} · version {doc.version} · indexed {doc.indexedAt.slice(0, 10)}
             </p>
             {doc.chunks.map((c) => (
               <section
                 key={c.chunkId}
                 id={c.chunkId}
-                className={`mt-6 rounded p-3 ${anchor === c.chunkId ? "bg-yellow-100 ring-2 ring-yellow-400 dark:bg-yellow-900/30" : ""}`}
+                className={`mt-4 rounded-[16px] border p-5 ${anchor === c.chunkId ? "border-warn-line bg-warn-bg" : "border-line bg-surface"}`}
               >
-                {c.location && <h2 className="font-semibold">{c.location}</h2>}
+                {c.location && <h2 className="font-bold">{c.location}</h2>}
                 <p className="mt-1 whitespace-pre-wrap">{c.text}</p>
               </section>
             ))}

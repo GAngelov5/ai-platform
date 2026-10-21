@@ -1,27 +1,29 @@
 import type { ToolCallSummary } from "@platform/contracts";
 
 const LABEL: Record<string, string> = {
-  "knowledge.search": "Searched documents",
-  "tracker.tasks.list": "Listed live tracker tasks",
-  "tracker.task.status": "Read live task status",
-  "tracker.task.comment": "Prepared a comment proposal",
+  "knowledge.search": "searched documents",
+  "tracker.tasks.list": "read the live tracker",
+  "tracker.task.status": "read live task status",
+  "tracker.task.comment": "prepared a comment",
 };
 
-/** Which capabilities the router used in a run, with outcome and duration. */
-export function RunStatus({ calls, running }: { calls: (ToolCallSummary | { capabilityId: string; status: "running" })[]; running?: boolean }) {
-  if (!calls.length && !running) return null;
+/** One quiet line describing which capabilities the router used. */
+export function RunStatus({ calls, running, model }: { calls: (ToolCallSummary | { capabilityId: string; status: "running" })[]; running?: boolean; model?: string }) {
+  if (!calls.length && !running && !model) return null;
+  const seen = new Set<string>();
+  const parts = calls
+    .filter((c) => (seen.has(c.capabilityId) ? false : (seen.add(c.capabilityId), true)))
+    .map((c) => {
+      const label = LABEL[c.capabilityId] ?? c.capabilityId;
+      if (c.status === "running") return `${label}…`;
+      if (c.status !== "ok") return `${label} (${c.status})`;
+      return label;
+    });
+  if (model) parts.push(model);
+  const text = parts.join(" · ");
   return (
-    <ul className="mb-2 flex flex-wrap gap-1.5 text-xs" aria-label="Tools used">
-      {calls.map((c, i) => (
-        <li
-          key={i}
-          className={`rounded-full border px-2 py-0.5 ${c.status === "ok" ? "border-emerald-300 text-emerald-800 dark:text-emerald-300" : c.status === "running" ? "border-blue-300 text-blue-800 dark:text-blue-300" : "border-red-300 text-red-800 dark:text-red-300"}`}
-        >
-          {LABEL[c.capabilityId] ?? c.capabilityId}
-          {"durationMs" in c ? ` · ${(c.durationMs / 1000).toFixed(1)}s` : " …"}
-          {c.status !== "ok" && c.status !== "running" ? ` · ${c.status}` : ""}
-        </li>
-      ))}
-    </ul>
+    <p className="mb-3 text-[12.5px] text-muted" aria-label="Tools used">
+      {text.charAt(0).toUpperCase() + text.slice(1)}
+    </p>
   );
 }

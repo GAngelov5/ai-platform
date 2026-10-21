@@ -1,9 +1,62 @@
 @import "tailwindcss";
 @source "../../../packages/ui/src";
 
+/* Forest theme: semantic tokens. Components use these names, never raw hex. */
+@theme {
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+
+  --color-canvas: #f4f3ee;
+  --color-panel: #ebeae3;
+  --color-surface: #fbfbf8;
+  --color-line: #dcd9cf;
+  --color-line-strong: #c8c4b7;
+
+  --color-ink: #18231d;
+  --color-ink-2: #34433a;
+  --color-muted: #5f6b62;
+
+  --color-brand: #1f4d3a;
+  --color-brand-hover: #173d2e;
+  --color-brand-soft: #dfe9e2;
+  --color-on-brand: #f4f3ee;
+
+  --color-chrome: #18231d;
+  --color-chrome-2: #2b3b32;
+  --color-chrome-muted: #b7c2ba;
+  --color-chrome-count: #e8c070;
+
+  --color-live: #2a6e4b;
+  --color-warn-line: #d3aa58;
+  --color-warn-bg: #faf3e3;
+  --color-warn-ink: #6b4a12;
+  --color-ok-line: #a8cbb6;
+  --color-ok-bg: #eef6f1;
+  --color-alert-line: #e2b98d;
+  --color-alert-bg: #f8ece0;
+  --color-alert-ink: #6e3b12;
+  --color-danger: #8f2d22;
+  --color-danger-line: #d9a79e;
+
+  --radius-control: 10px;
+  --radius-card: 16px;
+}
+
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 }
 body {
-  @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100;
+  @apply bg-canvas text-ink font-sans;
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+a {
+  @apply text-brand;
+}
+a:hover {
+  @apply text-brand-hover;
+}
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
 }
