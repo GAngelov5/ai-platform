@@ -5,7 +5,7 @@ import type { MeResponse, PublicConfig } from "@platform/contracts";
 import { api } from "../lib/api";
 import { useActions } from "../lib/usePendingActions";
 
-type Section = "assistants" | "inbox" | "connections" | "none";
+type Section = "assistants" | "inbox" | "connections" | "admin" | "none";
 
 const initials = (name: string) =>
   name
@@ -64,6 +64,8 @@ export function Header({ me, config, onLogout, active = "none" }: { me?: MeRespo
               </span>
             ) : null,
           )}
+          {/* Shown for admins only; the server enforces the role on every admin route. */}
+          {me.roles?.includes("admin") && navLink("/admin", "Admin", "admin")}
         </nav>
       )}
       {config && (

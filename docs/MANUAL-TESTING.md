@@ -4,13 +4,14 @@ Everything you can check by hand, stage by stage, on the local stack. Every
 step lists what to do, what you should see, and roughly how long it takes on
 a CPU-only Colima VM (6 vCPU / 10 GiB).
 
-All data is synthetic. The three dev identities are:
+All data is synthetic. The four dev identities are:
 
 | Who | Groups | Should see |
 |---|---|---|
 | **Alice** (`alice`) | all-staff, atlas-team | Atlas project documents, the live tracker, her own calendar. Never the finance/legal memo. |
 | **Bob** (`bob`) | all-staff | Handbook and all-staff files only. Never any Atlas title, text, citation or tracker tool. |
 | **Carol** (`carol`) | all-staff, atlas-team, finance-legal | Everything Alice sees, plus the restricted memo and finance/legal files. |
+| **Dana** (`dana`) | all-staff, role `admin` | The admin console (operational metadata only). As a document reader she is like Bob: all-staff only. |
 
 > Status of each stage, and what is still open: [ROADMAP.md](ROADMAP.md).
 > If a step fails, note the step number, the user and the time. The API logs
@@ -136,8 +137,8 @@ and run the command again.
 | 6.1 | Add `fixtures/sources/team-share/atlas/test-note.md` with a sentence such as "The Atlas canteen trial starts on 9 November." Ingest. As Alice, search or ask about the canteen trial. | Found and cited. As Bob: nothing. The `atlas/` folder inherits `SHARE\Atlas` → `atlas-team`. |
 | 6.2 | Edit `fixtures/sources/team-share/atlas/.acl.json` to `{ "groups": ["SHARE\\All Staff"] }`. Ingest. | Bob now sees the Atlas share files (but still not `atlas/legal/`, which has its own ACL). Access changes apply **before** the sync; the sync moves the files to the all-staff partition. |
 | 6.3 | Delete `test-note.md`. Ingest. | The note is gone for everyone immediately, and the sync confirms the physical deletion. |
-| 6.4 | Check quarantine: `docker exec -i $(docker ps -qf name=postgres) psql -U platform -c "select source_id, external_id, reason from source_quarantine"` | `architecture-diagram.pdf` is listed as `needs_ocr` (an image-only scan). Nothing quarantined is ever searchable. |
-| 6.5 | Check the run report: `... -c "select source_id, last_run from source_sync_state"` | Per-source counts: upserted, unchanged, aclChanged, tombstoned, quarantined. |
+| 6.4 | As Dana: **Admin → Sources → team-share → view** quarantine | `architecture-diagram.pdf` is listed as `needs_ocr` (an image-only scan). Nothing quarantined is ever searchable. |
+| 6.5 | As Dana: **Admin → Sources** | The last run report per source: upserted, removed, ACL changes, quarantined. |
 | 6.6 | Run the ingest twice in two terminals at the same time | The second waits for the indexing lock ("waiting for the knowledge indexing lock"). The two never overlap. |
 
 ## 7. Retrieval evaluation (Stage 3b)
@@ -207,6 +208,22 @@ Restore the tracker task afterwards (same command as 9.3, with `"status":"In pro
 
 ---
 
+## 10. Admin console
+
+Sign in as **Dana** (operator: `admin` role, all-staff documents only). An
+**Admin** link appears in the header.
+
+| # | User | Do | Expect |
+|---|---|---|---|
+| 10.1 | Dana | **Overview** | Health of knowledge, model and each connector. Counters for waiting, unknown and failed actions, quarantine, source errors, failing or stuck workflows, and denied events in the last 24 h. |
+| 10.2 | Dana | **Sources** → team-share | 1 quarantined item (`architecture-diagram.pdf`, `needs_ocr`) and 1 unsearchable item (the contractor file has no mapped group). |
+| 10.3 | Dana | **Sync now** on team-share | "sync requested", then within about a minute a new last-run time. Audit shows `admin.source.sync_requested` by dana. |
+| 10.4 | Dana | **Integrations** | atlas-tracker (4 tools) and calendar (1 tool), all pinned and enabled. Each capability shows read or write and who may use it. |
+| 10.5 | Dana | **Actions** | Every user's proposals, with state and origin. Comment texts are **not** shown, only field names and the hash. Filter by `unknown`; **Reconcile** appears only there. |
+| 10.6 | Dana | **Workflows** and **Audit** | All users' checks with last run and failures. Audit filters by action prefix (`workflow.`, `admin.`), principal and outcome. |
+| 10.7 | Dana | Ask the Project Assistant "Why was Project Atlas delayed?" | Not enough evidence: admin rights give **no** document access. |
+| 10.8 | Alice | Open `/admin`, or call `/api/admin/overview` | No Admin link; the API returns 404. As Dana, Audit shows the denied `admin.access`. |
+
 ## What you can't test yet (and why)
 
 | Area | Blocked on |
@@ -214,5 +231,4 @@ Restore the tracker task afterwards (same command as 9.3, with `"status":"In pro
 | Microsoft 365 mail, calendar and SharePoint (Stage 2) | A test tenant and an Entra app registration |
 | Citation support ≥ 95% and model-level abstention (Stage 3b) | Real model answers for 56 questions; 2–6 min each on CPU, so this waits for the GPU or model decision |
 | OCR for scans | Decision: Tesseract or docling in a parser container, or the RAG backend's parser |
-| Admin console (sources, quarantine, pins, audit) | Designed on the canvas, not built |
 | OIDC sign-in, backups and restore, upgrade drills (Stage 4) | Production hardening stage |

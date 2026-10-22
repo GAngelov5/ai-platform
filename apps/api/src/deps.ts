@@ -4,7 +4,7 @@ import type { ConnectorRegistry } from "@platform/connectors";
 import { AgentRuntime, FakeModelGateway, OpenAICompatibleGateway, type ModelGateway } from "@platform/ai";
 import { meetingPrep } from "@platform/agent-meeting-prep";
 import { projectAssistant } from "@platform/agent-project-assistant";
-import { createRepositories, type Database, type Repositories } from "@platform/database";
+import { createAdminQueries, createRepositories, type AdminQueries, type Database, type Repositories } from "@platform/database";
 import {
   chunkText,
   LexicalKnowledgeAdapter,
@@ -25,9 +25,12 @@ import type { Logger } from "./logger.js";
 export const DEFAULT_FIXTURES_ROOT = fileURLToPath(new URL("../../../fixtures", import.meta.url));
 export const DEFAULT_FIXTURES_DIR = fileURLToPath(new URL("../../../fixtures/documents", import.meta.url));
 
+/** The configured knowledge sources (the same list the worker ingests). */
+export const configuredSources = (config: PlatformConfig) =>
+  loadSources(config.ingestion.sourcesJson, process.env.FIXTURES_ROOT ?? DEFAULT_FIXTURES_ROOT, { includeEvalCorpus: config.ingestion.includeEvalCorpus });
+
 /** Sources this deployment's application policy allows to be searched: every configured source. */
-export const policySourceIds = (config: PlatformConfig) =>
-  loadSources(config.ingestion.sourcesJson, process.env.FIXTURES_ROOT ?? DEFAULT_FIXTURES_ROOT, { includeEvalCorpus: config.ingestion.includeEvalCorpus }).map((s) => s.id);
+export const policySourceIds = (config: PlatformConfig) => configuredSources(config).map((s) => s.id);
 
 export interface PlatformDeps {
   config: PlatformConfig;
@@ -42,6 +45,7 @@ export interface PlatformDeps {
   capabilities: CapabilityRegistry;
   connectors: ConnectorRegistry;
   workflows: WorkflowService;
+  admin: AdminQueries;
 }
 
 /** Chunks of exactly the catalogued version, from the platform content store (ADR 0009). */
@@ -151,5 +155,5 @@ export async function buildDeps(input: {
   });
   // The API creates and lists workflows; the worker dispatches and executes them.
   const workflows = new WorkflowService({ db, capabilities, actions, principals: repos.principals, audit: repos.audit, policyVersion: config.policyVersion });
-  return { config, repos, knowledge, agents, runtime, model, logger, pingDatabase: input.pingDatabase, actions, capabilities, connectors, workflows };
+  return { config, repos, knowledge, agents, runtime, model, logger, pingDatabase: input.pingDatabase, actions, capabilities, connectors, workflows, admin: createAdminQueries(db) };
 }

@@ -61,7 +61,7 @@ export class AuthController {
     });
     res.cookie(SESSION_COOKIE, token, { ...this.cookieBase(), httpOnly: true, maxAge: ttlMs });
     await repos.audit.write({ customerId: config.customerId, principalId: p.id, requestId: req.requestId, action: "auth.dev_login", outcome: "allowed" });
-    return { principalId: p.id, displayName: p.displayName, customerId: p.customerId, authMode: "dev" };
+    return { principalId: p.id, displayName: p.displayName, customerId: p.customerId, authMode: "dev", roles: [...p.roles] };
   }
 
   @Post("logout")
@@ -74,6 +74,6 @@ export class AuthController {
   @Get("me")
   me(@Req() req: PlatformRequest): MeResponse {
     const p = req.principal!;
-    return { principalId: p.id, displayName: p.displayName, customerId: p.customerId, authMode: this.deps.config.auth.mode };
+    return { principalId: p.id, displayName: p.displayName, customerId: p.customerId, authMode: this.deps.config.auth.mode, roles: [...p.roles] };
   }
 }

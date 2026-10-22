@@ -169,6 +169,8 @@ export const MeResponseSchema = z.strictObject({
   displayName: z.string(),
   customerId: z.string(),
   authMode: z.enum(["dev", "oidc"]),
+  /** e.g. "admin" shows the admin console. Authorization is always re-checked server-side. */
+  roles: z.array(z.string()),
 });
 export type MeResponse = z.infer<typeof MeResponseSchema>;
 

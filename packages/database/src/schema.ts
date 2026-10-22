@@ -372,6 +372,9 @@ export const sourceSyncState = pgTable(
     sourceId: text("source_id").notNull(),
     cursor: text("cursor"),
     lastRun: jsonb("last_run").$type<SourceRunReport>(),
+    /** An operator asked for a sync ("Sync now"); the worker runs it when this is newer than the last run. */
+    syncRequestedAt: ts("sync_requested_at"),
+    syncRequestedBy: text("sync_requested_by"),
     updatedAt: ts("updated_at").notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.customerId, t.sourceId] })],

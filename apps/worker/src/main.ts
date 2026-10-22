@@ -2,7 +2,7 @@ import { Queue, Worker } from "bullmq";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { pino } from "pino";
-import { connectDatabase, createRepositories, runMigrations, waitFor } from "@platform/database";
+import { connectDatabase, createAdminQueries, createRepositories, runMigrations, waitFor } from "@platform/database";
 import { ingestFixturesIntoRagflow, loadFixtureCorpus, loadSources, RagflowClient, syncLightRagPartitions, type LightRagPartition } from "@platform/knowledge";
 import { buildIntegrations } from "@platform/actions";
 import { fetchMcpToolPins } from "@platform/connectors";
@@ -221,6 +221,30 @@ async function main() {
             }
             return run.value;
           }
+          if (job.name === "sync-requests") {
+            // "Sync now" from the admin console: ingest the requested sources, then sync the RAG backend.
+            const admin = createAdminQueries(h.db);
+            const requested = await admin.pendingSyncRequests(c.customerId);
+            if (!requested.length) return { requested: 0 };
+            const startedAt = new Date();
+            const run = await h.withLock(
+              indexLock(c.customerId),
+              async () => {
+                const reports: Record<string, unknown> = {};
+                for (const id of requested) Object.assign(reports, await ingestAll(h.db, c.customerId, sources, (m, d) => log.info(d ?? {}, m), id));
+                let sync: unknown = "skipped";
+                if (c.knowledge.provider === "lightrag") {
+                  const k = c.knowledge;
+                  sync = await lightragSync(h.db, c.customerId, k.partitions, k.apiKey, k.timeoutMs, (m) => log.info(m));
+                }
+                for (const id of requested) await admin.clearSyncRequest(c.customerId, id, startedAt);
+                log.info({ requested, reports, sync }, "requested sync");
+                return { requested: requested.length };
+              },
+              { wait: false },
+            );
+            return run.acquired ? run.value : { skipped: "busy" }; // retried on the next tick
+          }
           if (job.name === "workflow-tick") {
             // Dispatch due workflows and execute runnable runs (incl. ones a crashed worker left behind).
             const r = await workflows.tick();
@@ -242,6 +266,7 @@ async function main() {
       await queue.upsertJobScheduler("catalog-report-hourly", { every: 60 * 60 * 1000 }, { name: "catalog-report" });
       await queue.upsertJobScheduler("action-maintenance", { every: 60 * 1000 }, { name: "action-maintenance" });
       await queue.upsertJobScheduler("workflow-tick", { every: 60 * 1000 }, { name: "workflow-tick" });
+      await queue.upsertJobScheduler("sync-requests", { every: 60 * 1000 }, { name: "sync-requests" });
       await queue.upsertJobScheduler("knowledge-ingest", { every: c.ingestion.intervalMinutes * 60 * 1000 }, { name: "knowledge-ingest" });
       await actions.recoverInterrupted(0); // anything 'executing' at startup was interrupted
       let stopping = false;

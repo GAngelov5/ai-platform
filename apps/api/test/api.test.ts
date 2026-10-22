@@ -494,6 +494,73 @@ describe("second agent and scheduled workflows (Stage 3c)", () => {
   });
 });
 
+describe("admin console (ADR 0012)", () => {
+  const ROUTES = ["overview", "sources", "sources/team-share/quarantine", "integrations", "agents", "actions", "workflows", "audit"];
+
+  it("is invisible to non-admins (404 everywhere), and the denial is audited", async () => {
+    const alice = await as("alice");
+    expect((await alice.req("GET", "/api/auth/me")).json.roles).not.toContain("admin");
+    for (const r of ROUTES) expect((await alice.req("GET", `/api/admin/${r}`)).status, r).toBe(404);
+    expect((await alice.req("POST", "/api/admin/sources/team-share/sync")).status).toBe(404);
+    const dana = await as("dana");
+    const denied = await dana.req("GET", "/api/admin/audit?action=admin.access&principal=alice");
+    expect(denied.json.length).toBeGreaterThan(0);
+    expect(denied.json[0]).toMatchObject({ outcome: "denied", resourceType: "route" });
+  });
+
+  it("gives the admin operational views but no document access", async () => {
+    const dana = await as("dana");
+    expect((await dana.req("GET", "/api/auth/me")).json.roles).toContain("admin");
+    const o = (await dana.req("GET", "/api/admin/overview")).json;
+    expect(o.health.knowledge.ok).toBe(true);
+    expect(o.sources.configured).toBeGreaterThanOrEqual(3);
+    const sources = (await dana.req("GET", "/api/admin/sources")).json;
+    expect(sources.find((s: { id: string }) => s.id === "team-share")).toMatchObject({ quarantined: 1, unsearchable: 1 });
+    const q = (await dana.req("GET", "/api/admin/sources/team-share/quarantine")).json;
+    expect(q[0]).toMatchObject({ externalId: "atlas/architecture-diagram.pdf", reason: "needs_ocr" });
+    expect((await dana.req("GET", "/api/admin/sources/no-such-source/quarantine")).status).toBe(404);
+    expect((await dana.req("GET", "/api/admin/agents")).json.map((a: { id: string }) => a.id).sort()).toEqual(["meeting-prep", "project-assistant"]);
+    const integrations = (await dana.req("GET", "/api/admin/integrations")).json;
+    expect(integrations[0]).toMatchObject({ id: "atlas-tracker" });
+    expect(integrations[0].tools.every((t: { enabled: boolean }) => t.enabled)).toBe(true);
+
+    // Administration is not document access: Dana searches with her own groups (all-staff).
+    const search = await dana.req("POST", "/api/knowledge/search", { query: "Why was Project Atlas delayed?", limit: 5 });
+    expect(JSON.stringify(search.json)).not.toMatch(/Atlas Status Report|Northwind|FORBIDDEN-CANARY/);
+  });
+
+  it("never returns document text, excerpts or proposal payload values", async () => {
+    const alice = await as("alice");
+    const marker = "ADMIN-MUST-NOT-SEE-7731";
+    await ask(alice, `Add a comment to ATLAS-180 saying "${marker}"`);
+    const dana = await as("dana");
+    const actions = (await dana.req("GET", "/api/admin/actions")).json;
+    expect(actions.length).toBeGreaterThan(0);
+    expect(actions[0]).toHaveProperty("payloadFields");
+    let everything = "";
+    for (const r of ROUTES) everything += (await dana.req("GET", `/api/admin/${r}`)).text;
+    expect(everything).not.toContain(marker); // comment text written by alice
+    expect(everything).not.toContain("FORBIDDEN-CANARY-7Q4X"); // restricted memo text
+    expect(everything).not.toContain("certification slipped by six weeks"); // a sentence from the Atlas status report body
+    expect(actions.some((a: { payloadFields: string[] }) => a.payloadFields.includes("text"))).toBe(true); // the proposal exists, only its value is hidden
+  });
+
+  it("records a sync request (CSRF-protected) that the worker picks up", async () => {
+    const dana = await as("dana");
+    expect((await dana.req("POST", "/api/admin/sources/team-share/sync", undefined, {}, { csrf: false })).status).toBe(403);
+    expect((await dana.req("POST", "/api/admin/sources/nope/sync")).status).toBe(404);
+    const r = await dana.req("POST", "/api/admin/sources/team-share/sync");
+    expect(r.status).toBe(202);
+    const s = (await dana.req("GET", "/api/admin/sources")).json.find((x: { id: string }) => x.id === "team-share");
+    expect(s).toMatchObject({ syncRequested: true, syncRequestedBy: "dana" });
+    expect(await deps.admin.pendingSyncRequests("cust_demo")).toContain("team-share");
+    await deps.admin.clearSyncRequest("cust_demo", "team-share", new Date());
+    expect(await deps.admin.pendingSyncRequests("cust_demo")).not.toContain("team-share");
+    const audit = (await dana.req("GET", "/api/admin/audit?action=admin.source")).json;
+    expect(audit[0]).toMatchObject({ action: "admin.source.sync_requested", principalId: "dana", resourceId: "team-share" });
+  });
+});
+
 describe("development authentication switch", () => {
   it("is unavailable when DEV_AUTH_ENABLED is false", async () => {
     const off = await boot({ DEV_AUTH_ENABLED: "false" });

@@ -1,9 +1,9 @@
 import { ForbiddenException, Injectable, UnauthorizedException, type CanActivate, type ExecutionContext } from "@nestjs/common";
 import type { Reflector } from "@nestjs/core";
 import { CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE } from "@platform/contracts";
-import { constantTimeEqual, createTrustedContext, hashToken } from "@platform/security";
+import { constantTimeEqual, createTrustedContext, hashToken, NotFoundOrForbiddenError } from "@platform/security";
 import type { PlatformDeps } from "../deps.js";
-import { PUBLIC_ROUTE } from "./decorators.js";
+import { ADMIN_ROUTE, PUBLIC_ROUTE } from "./decorators.js";
 import type { PlatformRequest } from "./http.js";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -58,6 +58,12 @@ export class AuthGuard implements CanActivate {
       policyVersion: config.policyVersion,
       requestId: req.requestId,
     });
+    if (this.reflector.getAllAndOverride<boolean>(ADMIN_ROUTE, [ec.getHandler(), ec.getClass()]) && !principal.roles.includes("admin")) {
+      void repos.audit
+        .write({ customerId: session.customerId, principalId: principal.id, requestId: req.requestId, action: "admin.access", resourceType: "route", resourceId: req.path, outcome: "denied" })
+        .catch(() => {});
+      throw new NotFoundOrForbiddenError();
+    }
     return true;
   }
 }

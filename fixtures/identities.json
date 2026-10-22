@@ -1,27 +1,57 @@
 {
   "$comment": "Synthetic development principals. Never used in production (AUTH_MODE=oidc).",
-  "customer": { "id": "cust_demo", "name": "Demo Customer (synthetic)" },
+  "customer": {
+    "id": "cust_demo",
+    "name": "Demo Customer (synthetic)"
+  },
   "principals": [
     {
       "principalId": "alice",
       "displayName": "Alice Atlas (project member)",
       "description": "Member of the Atlas project team. Can read Atlas project documents but not finance/legal material.",
-      "groups": ["all-staff", "atlas-team"],
-      "roles": ["user"]
+      "groups": [
+        "all-staff",
+        "atlas-team"
+      ],
+      "roles": [
+        "user"
+      ]
     },
     {
       "principalId": "bob",
       "displayName": "Bob Denied (no Atlas access)",
       "description": "Denied fixture principal. All-staff only: must not see any Atlas title, text or citation.",
-      "groups": ["all-staff"],
-      "roles": ["user"]
+      "groups": [
+        "all-staff"
+      ],
+      "roles": [
+        "user"
+      ]
     },
     {
       "principalId": "carol",
       "displayName": "Carol Counsel (finance/legal)",
       "description": "Atlas team plus finance-legal. The only principal allowed to read the restricted contract memo.",
-      "groups": ["all-staff", "atlas-team", "finance-legal"],
-      "roles": ["user"]
+      "groups": [
+        "all-staff",
+        "atlas-team",
+        "finance-legal"
+      ],
+      "roles": [
+        "user"
+      ]
+    },
+    {
+      "principalId": "dana",
+      "displayName": "Dana Operator (platform admin)",
+      "description": "Platform operator. Sees the admin console (sources, integrations, actions, workflows, audit) but only all-staff documents: administration grants no document access.",
+      "groups": [
+        "all-staff"
+      ],
+      "roles": [
+        "user",
+        "admin"
+      ]
     }
   ]
 }

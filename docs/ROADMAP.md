@@ -16,6 +16,7 @@ Last updated: 2026-10-22
 | UI · Forest design | Workspace with context panel, Inbox, account menu, Your connections | commit 51c3d73 · design canvas |
 | 3a · Source ingestion | `SourceAdapter` contract, generic pipeline, folder adapter with inherited ACLs, quarantine, content store, partitions per access set, scheduled ingest → sync | ADR 0009 · 98 tests · `scripts/lightrag-live-check.mjs` (23/23, 2026-10-22) |
 | 3b · Knowledge selection gate *(retrieval part)* | PDF/DOCX parsing in an isolated worker thread, 110-file synthetic corpus, 34 labeled questions, HTTP eval harness (base + hard sets), platform-side version handling, optional semantic evidence score | ADR 0010 · `docs/eval/` (lexical + LightRAG) · 113 tests |
+| Admin console | Operator console (Overview, Sources with Sync now and quarantine, Integrations and pins, Agents, Actions with reconcile, Workflows, Audit); `admin` role with no document access; metadata only, never content | ADR 0012 · 144 tests |
 | 3c · Second agent and workflow | Meeting Preparation Assistant (definition only) with a synthetic calendar MCP; durable scheduled status-check workflow (PostgreSQL state, BullMQ trigger, deduplicated proposals, one approval per write); Inbox → Scheduled checks | ADR 0011 · 129 tests · `scripts/stage3c-live-check.mjs` |
 
 ## Next
@@ -36,9 +37,10 @@ Last updated: 2026-10-22
      This needs real model answers, and waits for the model and hardware
      decision below.
    - OCR for scans.
-3. **Admin console:** sources (sync status, quarantine), integrations (pins,
-   requests), action operator queue, runs and audit. Designed on the canvas,
-   not built.
+3. **Entitlements and the core Knowledge Assistant:** a signed licence file
+   listing the agents and workflow kinds a customer has, shown on the admin
+   Agents tab; split the Project Assistant into a read-only core assistant
+   and the paid project add-on.
 4. **Stage 4 · Production hardening:** OIDC, secrets manager, image slimming
    and scanning, egress tests in CI, backup and restore drills,
    OpenTelemetry, Playwright.
