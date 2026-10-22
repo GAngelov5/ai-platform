@@ -15,7 +15,7 @@ import type { PlatformDeps } from "./deps.js";
 import { PlatformErrorFilter } from "./errors.js";
 import { DEPS } from "./tokens.js";
 
-export { buildDeps, POLICY_SOURCE_IDS, DEFAULT_FIXTURES_DIR, type PlatformDeps } from "./deps.js";
+export { buildDeps, policySourceIds, DEFAULT_FIXTURES_DIR, DEFAULT_FIXTURES_ROOT, type PlatformDeps } from "./deps.js";
 export { createLogger } from "./logger.js";
 
 @Module({})

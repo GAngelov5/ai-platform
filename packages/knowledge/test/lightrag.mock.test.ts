@@ -15,10 +15,11 @@ import {
   type LightRagPartition,
 } from "../src/index.js";
 
-const PARTS: LightRagPartition[] = [
+// Legacy single-source form; normalized to sourceIds by the schema.
+const PARTS: LightRagPartition[] = LightRagPartitionsSchema.parse([
   { id: "p_team", url: "http://lr-team:9621", sourceId: "atlas", aclGroups: ["atlas-team"] },
-  { id: "p_legal", url: "http://lr-legal:9621", sourceId: "atlas", aclGroups: ["finance-legal"] },
-];
+  { id: "p_legal", url: "http://lr-legal:9621", sourceIds: ["atlas"], aclGroups: ["finance-legal"] },
+]);
 
 interface FakeDoc {
   id: string;
@@ -112,8 +113,16 @@ describe("LightRAG partitions", () => {
   });
 
   it("rejects ambiguous partition configuration", () => {
-    expect(LightRagPartitionsSchema.safeParse([PARTS[0], { ...PARTS[0], id: "p_dup" }]).success).toBe(false);
-    expect(LightRagPartitionsSchema.safeParse(PARTS).success).toBe(true);
+    const base = { url: "http://x:9621", aclGroups: ["atlas-team"] };
+    expect(LightRagPartitionsSchema.safeParse([{ ...base, id: "a", sourceIds: ["atlas", "share"] }, { ...base, id: "b", sourceIds: ["share"] }]).success).toBe(false);
+    expect(LightRagPartitionsSchema.safeParse([{ ...base, id: "a", sourceId: "atlas", sourceIds: ["share"] }]).success).toBe(false);
+    expect(LightRagPartitionsSchema.safeParse([{ ...base, id: "a", sourceIds: ["atlas", "share"] }]).success).toBe(true);
+  });
+
+  it("lets one partition serve several sources with the same access set, never an empty ACL", () => {
+    const [multi] = LightRagPartitionsSchema.parse([{ id: "m", url: "http://x:9621", sourceIds: ["atlas", "share"], aclGroups: ["atlas-team"] }]);
+    expect(partitionFor(doc("a", ["atlas-team"], { sourceId: "share" }), [multi!])?.id).toBe("m");
+    expect(partitionFor(doc("a", [], { sourceId: "share" }), [multi!])).toBeUndefined();
   });
 });
 

@@ -15,6 +15,13 @@
       "when": 1792601246912,
       "tag": "0001_integrations_actions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792662772556,
+      "tag": "0002_source_ingestion",
+      "breakpoints": true
     }
   ]
 }

@@ -5,9 +5,11 @@ import { AgentRuntime, FakeModelGateway, OpenAICompatibleGateway, type ModelGate
 import { projectAssistant } from "@platform/agent-project-assistant";
 import { createRepositories, type Database, type Repositories } from "@platform/database";
 import {
-  FixtureKnowledgeAdapter,
+  chunkText,
+  LexicalKnowledgeAdapter,
+  loadSources,
+  type ChunkLoader,
   LightRagKnowledgeAdapter,
-  loadFixtureCorpus,
   PolicyEnforcingKnowledgeService,
   RagflowKnowledgeAdapter,
   type KnowledgeAdapter,
@@ -16,10 +18,12 @@ import { mcpTokenVar, type PlatformConfig } from "@platform/security";
 import { fileURLToPath } from "node:url";
 import type { Logger } from "./logger.js";
 
-/** Sources this deployment's application policy allows to be searched. */
-export const POLICY_SOURCE_IDS = ["atlas-project-docs", "company-handbook"] as const;
-
+export const DEFAULT_FIXTURES_ROOT = fileURLToPath(new URL("../../../fixtures", import.meta.url));
 export const DEFAULT_FIXTURES_DIR = fileURLToPath(new URL("../../../fixtures/documents", import.meta.url));
+
+/** Sources this deployment's application policy allows to be searched: every configured source. */
+export const policySourceIds = (config: PlatformConfig) =>
+  loadSources(config.ingestion.sourcesJson, process.env.FIXTURES_ROOT ?? DEFAULT_FIXTURES_ROOT).map((s) => s.id);
 
 export interface PlatformDeps {
   config: PlatformConfig;
@@ -35,24 +39,33 @@ export interface PlatformDeps {
   connectors: ConnectorRegistry;
 }
 
-export async function createKnowledgeAdapter(config: PlatformConfig): Promise<KnowledgeAdapter> {
+/** Chunks of exactly the catalogued version, from the platform content store (ADR 0009). */
+export function contentStoreChunks(repos: Repositories): ChunkLoader {
+  return async (doc) => {
+    const row = await repos.content.get(doc.customerId, doc.documentId);
+    return row && row.version === doc.version ? chunkText(doc.documentId, row.text) : [];
+  };
+}
+
+export async function createKnowledgeAdapter(config: PlatformConfig, repos: Repositories): Promise<KnowledgeAdapter> {
   if (config.knowledge.provider === "ragflow") {
     const k = config.knowledge;
     return new RagflowKnowledgeAdapter({ baseUrl: k.baseUrl, apiKey: k.apiKey, datasetId: k.datasetId, timeoutMs: k.timeoutMs });
   }
+  const chunks = contentStoreChunks(repos);
   if (config.knowledge.provider === "lightrag") {
     const k = config.knowledge;
-    // Document views are served from the platform's ingestion copy (synthetic fixtures here).
-    const corpus = new FixtureKnowledgeAdapter(await loadFixtureCorpus(k.fixturesDir ?? DEFAULT_FIXTURES_DIR));
     return new LightRagKnowledgeAdapter({
       partitions: k.partitions,
       apiKey: k.apiKey,
       timeoutMs: k.timeoutMs,
       queryMode: k.queryMode,
-      documentContent: (doc) => corpus.getDocumentChunks(doc),
+      // LightRAG has no "chunks of a document" endpoint: views come from the platform content store.
+      documentContent: async (doc) => (await chunks(doc)).map((c) => ({ documentId: doc.documentId, chunkId: c.chunkId, text: c.text, location: c.location, score: 1 })),
     });
   }
-  return new FixtureKnowledgeAdapter(await loadFixtureCorpus(config.knowledge.fixturesDir ?? DEFAULT_FIXTURES_DIR));
+  // Fixture provider: deterministic lexical retrieval over the content store (every ingested source).
+  return new LexicalKnowledgeAdapter(chunks, "fixture");
 }
 
 export function createModelGateway(config: PlatformConfig): ModelGateway {
@@ -82,13 +95,13 @@ export async function buildDeps(input: {
 }): Promise<PlatformDeps> {
   const { config, db, logger } = input;
   const repos = createRepositories(db);
-  const adapter = input.adapter ?? (await createKnowledgeAdapter(config));
+  const adapter = input.adapter ?? (await createKnowledgeAdapter(config, repos));
   const knowledge = new PolicyEnforcingKnowledgeService({
     catalog: repos.catalog,
     principals: repos.principals,
     ledger: repos.evidence,
     adapter,
-    policySourceIds: POLICY_SOURCE_IDS,
+    policySourceIds: policySourceIds(config),
     onSecurityEvent: (e) => {
       logger.warn({ securityEvent: e.type, requestId: e.ctx.requestId, principalId: e.ctx.principalId, ...e.detail }, "security event");
       void repos.audit

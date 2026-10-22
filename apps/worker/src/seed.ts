@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createRepositories, seedIdentities, type Database, type FixtureIdentity } from "@platform/database";
-import { loadFixtureCorpus } from "@platform/knowledge";
+import { seedIdentities, type Database, type FixtureIdentity } from "@platform/database";
+import { loadSources } from "@platform/knowledge";
+import { ingestAll } from "./ingest.js";
 
 export interface IdentityFixtureFile {
   customer: { id: string; name: string };
@@ -9,36 +10,26 @@ export interface IdentityFixtureFile {
 }
 
 /**
- * Seeds synthetic identities and the platform document catalog from fixtures.
- * Catalog entries carry source, version and ACL; content stays in the adapter.
- * Documents no longer present in the fixtures are tombstoned.
+ * Seeds synthetic identities, then ingests the configured sources through the
+ * generic pipeline (ADR 0009): fixtures and the synthetic team share by default.
  */
-export async function seedFixtures(db: Database, fixturesRoot: string, customerId: string): Promise<{ principals: number; documents: number; tombstoned: number }> {
+export async function seedFixtures(
+  db: Database,
+  fixturesRoot: string,
+  customerId: string,
+  sourcesJson?: string,
+): Promise<{ principals: number; documents: number; tombstoned: number; quarantined: number }> {
   const identities = JSON.parse(await readFile(join(fixturesRoot, "identities.json"), "utf8")) as IdentityFixtureFile;
   if (identities.customer.id !== customerId) {
     throw new Error(`fixture customer ${identities.customer.id} does not match CUSTOMER_ID ${customerId}`);
   }
   await seedIdentities(db, identities.customer, identities.principals);
-  const repos = createRepositories(db);
-  const corpus = await loadFixtureCorpus(join(fixturesRoot, "documents"));
-  const existing = new Map((await repos.catalog.listAll(customerId)).map((d) => [d.documentId, d]));
-  for (const d of corpus) {
-    const prev = existing.get(d.documentId);
-    await repos.catalog.upsert({
-      customerId,
-      documentId: d.documentId,
-      sourceId: d.sourceId,
-      version: d.version,
-      title: d.title,
-      sourceUrl: d.sourceUrl,
-      aclGroups: d.aclGroups,
-      contentHash: d.contentHash,
-      // Keep the RAG backend reference only if the content is unchanged.
-      externalRef: prev && prev.version === d.version ? prev.externalRef : {},
-      indexedAt: d.indexedAt,
-    });
-    existing.delete(d.documentId);
-  }
-  for (const gone of existing.values()) await repos.catalog.tombstone(customerId, gone.documentId);
-  return { principals: identities.principals.length, documents: corpus.length, tombstoned: existing.size };
+  const reports = await ingestAll(db, customerId, loadSources(sourcesJson, fixturesRoot), () => {});
+  const sum = (k: "upserted" | "unchanged" | "aclChanged" | "tombstoned" | "quarantined") => Object.values(reports).reduce((n, r) => n + r[k], 0);
+  return {
+    principals: identities.principals.length,
+    documents: sum("upserted") + sum("unchanged") + sum("aclChanged"),
+    tombstoned: sum("tombstoned"),
+    quarantined: sum("quarantined"),
+  };
 }

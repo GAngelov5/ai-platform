@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { chunkText } from "../ingestion/chunk.js";
 
 export interface FixtureChunk {
   chunkId: string;
@@ -38,14 +39,7 @@ export function parseFixtureDocument(fileName: string, raw: string): FixtureDocu
   const body = m[2]!.trim();
   const documentId = meta.documentId!;
 
-  const chunks: FixtureChunk[] = [];
-  let heading: string | undefined;
-  for (const block of body.split(/\n(?=## )/)) {
-    const lines = block.split("\n");
-    if (lines[0]?.startsWith("## ")) heading = lines.shift()!.slice(3).trim();
-    const text = lines.join("\n").trim();
-    if (text) chunks.push({ chunkId: `${documentId}#c${chunks.length + 1}`, location: heading, text });
-  }
+  const chunks: FixtureChunk[] = chunkText(documentId, body);
 
   return {
     documentId,

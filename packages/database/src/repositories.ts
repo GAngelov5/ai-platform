@@ -4,13 +4,17 @@ import {
   agentRuns,
   auditEvents,
   conversations,
+  documentContent,
   issuedEvidence,
   liveEvidence,
   messages,
   principals,
   sessions,
   sourceDocuments,
+  sourceQuarantine,
+  sourceSyncState,
   toolCalls,
+  type SourceRunReport,
   type StoredCitation,
   type StoredToolCall,
 } from "./schema.js";
@@ -246,6 +250,67 @@ export function createRepositories(db: Database) {
           .where(and(eq(issuedEvidence.customerId, customerId), eq(issuedEvidence.evidenceId, evidenceId)));
         if (!row) return undefined;
         return { ...row, location: row.location ?? undefined, sourceUrl: row.sourceUrl ?? undefined };
+      },
+    },
+
+    content: {
+      async put(row: { customerId: string; documentId: string; version: string; mimeType: string; text: string; contentHash: string }): Promise<void> {
+        await db
+          .insert(documentContent)
+          .values(row)
+          .onConflictDoUpdate({
+            target: [documentContent.customerId, documentContent.documentId],
+            set: { version: row.version, mimeType: row.mimeType, text: row.text, contentHash: row.contentHash, updatedAt: new Date() },
+          });
+      },
+      async get(customerId: string, documentId: string) {
+        const [row] = await db
+          .select()
+          .from(documentContent)
+          .where(and(eq(documentContent.customerId, customerId), eq(documentContent.documentId, documentId)));
+        return row;
+      },
+    },
+
+    sources: {
+      async getState(customerId: string, sourceId: string) {
+        const [row] = await db
+          .select()
+          .from(sourceSyncState)
+          .where(and(eq(sourceSyncState.customerId, customerId), eq(sourceSyncState.sourceId, sourceId)));
+        return row;
+      },
+      async saveState(customerId: string, sourceId: string, cursor: string | null, lastRun: SourceRunReport): Promise<void> {
+        await db
+          .insert(sourceSyncState)
+          .values({ customerId, sourceId, cursor, lastRun })
+          .onConflictDoUpdate({ target: [sourceSyncState.customerId, sourceSyncState.sourceId], set: { cursor, lastRun, updatedAt: new Date() } });
+      },
+      async quarantine(row: { customerId: string; sourceId: string; externalId: string; version: string; reason: string; detail?: string }): Promise<void> {
+        await db
+          .insert(sourceQuarantine)
+          .values({ ...row, detail: row.detail ?? null })
+          .onConflictDoUpdate({
+            target: [sourceQuarantine.customerId, sourceQuarantine.sourceId, sourceQuarantine.externalId],
+            set: { version: row.version, reason: row.reason, detail: row.detail ?? null, createdAt: new Date() },
+          });
+      },
+      async release(customerId: string, sourceId: string, externalId: string): Promise<void> {
+        await db
+          .delete(sourceQuarantine)
+          .where(and(eq(sourceQuarantine.customerId, customerId), eq(sourceQuarantine.sourceId, sourceId), eq(sourceQuarantine.externalId, externalId)));
+      },
+      async listQuarantinedVersions(customerId: string, sourceId: string) {
+        return db
+          .select({ externalId: sourceQuarantine.externalId, version: sourceQuarantine.version })
+          .from(sourceQuarantine)
+          .where(and(eq(sourceQuarantine.customerId, customerId), eq(sourceQuarantine.sourceId, sourceId)));
+      },
+      async listQuarantine(customerId: string, sourceId?: string) {
+        return db
+          .select()
+          .from(sourceQuarantine)
+          .where(sourceId ? and(eq(sourceQuarantine.customerId, customerId), eq(sourceQuarantine.sourceId, sourceId)) : eq(sourceQuarantine.customerId, customerId));
       },
     },
 

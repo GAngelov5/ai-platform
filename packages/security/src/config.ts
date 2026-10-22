@@ -41,6 +41,9 @@ const EnvSchema = z.object({
   LIGHTRAG_QUERY_MODE: z.enum(["naive", "local", "global", "hybrid", "mix"]).default("mix"),
   LIGHTRAG_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(60000),
 
+  /** JSON list of knowledge sources (packages/knowledge SourcesConfigSchema); defaults to the synthetic sources. */
+  KNOWLEDGE_SOURCES: z.string().optional(),
+  INGEST_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(15),
   /** JSON allowlist of MCP servers with pinned tool hashes (see packages/connectors McpServersSchema). */
   MCP_SERVERS: z.string().optional(),
   ACTION_PROPOSAL_TTL_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(30),
@@ -71,13 +74,14 @@ export interface PlatformConfig {
     | { provider: "ragflow"; baseUrl: string; apiKey: string; datasetId: string; timeoutMs: number }
     | {
         provider: "lightrag";
-        partitions: { id: string; url: string; sourceId: string; aclGroups: string[] }[];
+        partitions: { id: string; url: string; sourceIds: string[]; aclGroups: string[] }[];
         apiKey: string;
         queryMode: "naive" | "local" | "global" | "hybrid" | "mix";
         timeoutMs: number;
         fixturesDir?: string;
       };
   integrations: { mcpServersJson?: string; proposalTtlMinutes: number };
+  ingestion: { sourcesJson?: string; intervalMinutes: number };
   model:
     | { mode: "local" | "hybrid"; provider: "fake" }
     | {
@@ -147,7 +151,7 @@ export function loadPlatformConfig(
     }
   }
 
-  let lightragPartitions: { id: string; url: string; sourceId: string; aclGroups: string[] }[] = [];
+  let lightragPartitions: { id: string; url: string; sourceIds: string[]; aclGroups: string[] }[] = [];
   if (e.KNOWLEDGE_PROVIDER === "lightrag") {
     if (!e.LIGHTRAG_API_KEY) problems.push("LIGHTRAG_API_KEY is required when KNOWLEDGE_PROVIDER=lightrag");
     if (prod && e.LIGHTRAG_API_KEY && e.LIGHTRAG_API_KEY.length < 24) problems.push("production LIGHTRAG_API_KEY must be at least 24 characters");
@@ -235,6 +239,7 @@ export function loadPlatformConfig(
             }
           : { provider: "fixture", fixturesDir: e.FIXTURES_DIR },
     integrations: { mcpServersJson: e.MCP_SERVERS, proposalTtlMinutes: e.ACTION_PROPOSAL_TTL_MINUTES },
+    ingestion: { sourcesJson: e.KNOWLEDGE_SOURCES, intervalMinutes: e.INGEST_INTERVAL_MINUTES },
     model:
       e.MODEL_PROVIDER === "openai-compatible"
         ? {
@@ -252,19 +257,23 @@ export function loadPlatformConfig(
 
 const PartitionsSchema = z
   .array(
-    z.strictObject({
-      id: z.string().regex(/^[A-Za-z0-9_]{1,64}$/),
-      url: z.string().url(),
-      sourceId: z.string().min(1),
-      aclGroups: z.array(z.string().min(1)).min(1),
-    }),
+    z
+      .strictObject({
+        id: z.string().regex(/^[A-Za-z0-9_]{1,64}$/),
+        url: z.string().url(),
+        sourceId: z.string().min(1).optional(),
+        sourceIds: z.array(z.string().min(1)).min(1).optional(),
+        aclGroups: z.array(z.string().min(1)).min(1),
+      })
+      .refine((p) => !!p.sourceId !== !!p.sourceIds, "set exactly one of sourceId or sourceIds")
+      .transform(({ sourceId, sourceIds, ...rest }) => ({ ...rest, sourceIds: sourceIds ?? [sourceId!] })),
   )
   .min(1)
   .refine((ps) => new Set(ps.map((p) => p.id)).size === ps.length, "partition ids must be unique")
-  .refine(
-    (ps) => new Set(ps.map((p) => `${p.sourceId}|${[...new Set(p.aclGroups)].sort().join(",")}`)).size === ps.length,
-    "two partitions must not share the same source and ACL set",
-  );
+  .refine((ps) => {
+    const keys = ps.flatMap((p) => p.sourceIds.map((s) => `${s}|${[...new Set(p.aclGroups)].sort().join(",")}`));
+    return new Set(keys).size === keys.length;
+  }, "two partitions must not accept the same source and ACL set");
 
 /** Secret reference for an MCP server's audience-bound token, e.g. MCP_TOKEN_ATLAS_TRACKER. */
 export const mcpTokenVar = (serverId: string) => `MCP_TOKEN_${serverId.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;

@@ -3,11 +3,12 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { pino } from "pino";
 import { connectDatabase, createRepositories, runMigrations, waitFor } from "@platform/database";
-import { ingestFixturesIntoRagflow, loadFixtureCorpus, RagflowClient, syncLightRagPartitions } from "@platform/knowledge";
+import { ingestFixturesIntoRagflow, loadFixtureCorpus, loadSources, RagflowClient, syncLightRagPartitions, type LightRagPartition } from "@platform/knowledge";
 import { buildIntegrations } from "@platform/actions";
 import { fetchMcpToolPins } from "@platform/connectors";
 import { ConfigurationError, LOG_REDACT_PATHS, loadPlatformConfig, mcpTokenVar, redactUrl } from "@platform/security";
 import { seedFixtures } from "./seed.js";
+import { ingestAll } from "./ingest.js";
 
 const FIXTURES_ROOT = process.env.FIXTURES_ROOT ?? fileURLToPath(new URL("../../../fixtures", import.meta.url));
 const QUEUE = "platform-maintenance";
@@ -48,7 +49,7 @@ async function main() {
       if (c.env === "production") throw new Error("refusing to seed synthetic fixtures in production");
       const h = connectDatabase(c.databaseUrl!, { max: 1 });
       try {
-        const r = await seedFixtures(h.db, FIXTURES_ROOT, c.customerId);
+        const r = await seedFixtures(h.db, FIXTURES_ROOT, c.customerId, c.ingestion.sourcesJson);
         log.info(r, "synthetic fixtures seeded");
       } finally {
         await h.close();
@@ -80,24 +81,25 @@ async function main() {
       const k = c.knowledge;
       const h = connectDatabase(c.databaseUrl!, { max: 1 });
       try {
-        const repos = createRepositories(h.db);
-        // Synthetic milestone: the ingestion copy of each document is the fixture file.
-        const corpus = new Map((await loadFixtureCorpus(join(FIXTURES_ROOT, "documents"))).map((d) => [d.documentId, d]));
-        const report = await syncLightRagPartitions(
-          k.partitions,
-          { apiKey: k.apiKey, timeoutMs: k.timeoutMs },
-          {
-            listAll: () => repos.catalog.listAll(c.customerId),
-            setExternalRef: (documentId, ref) => repos.catalog.setExternalRef(c.customerId, documentId, ref),
-            content: async (doc) => {
-              const fx = corpus.get(doc.documentId);
-              return fx && fx.version === doc.version ? fx.body : undefined;
-            },
-          },
-          (m) => log.info(m),
-        );
+        const report = await lightragSync(h.db, c.customerId, k.partitions, k.apiKey, k.timeoutMs, (m) => log.info(m));
         log.info(report, "lightrag sync complete");
         if (report.failed.length || !report.deletionVerified) process.exitCode = 2;
+      } finally {
+        await h.close();
+      }
+      return;
+    }
+    case "ingest": {
+      const c = config({ requireDatabase: true });
+      const h = connectDatabase(c.databaseUrl!, { max: 1 });
+      try {
+        const reports = await ingestAll(h.db, c.customerId, loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT), (m, d) => log.info(d ?? {}, m), process.argv[3]);
+        for (const [id, r] of Object.entries(reports)) log.info({ source: id, ...r }, "ingestion complete");
+        if (c.knowledge.provider === "lightrag" && process.argv.includes("--sync")) {
+          const k = c.knowledge;
+          const report = await lightragSync(h.db, c.customerId, k.partitions, k.apiKey, k.timeoutMs, (m) => log.info(m));
+          log.info(report, "lightrag sync complete");
+        }
       } finally {
         await h.close();
       }
@@ -128,6 +130,7 @@ async function main() {
       const h = connectDatabase(c.databaseUrl!, { max: 2 });
       await waitFor("postgres", h.ping);
       const repos = createRepositories(h.db);
+      const sources = loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT);
       const { actions } = buildIntegrations({
         db: h.db,
         mcpServersJson: c.integrations.mcpServersJson,
@@ -150,6 +153,17 @@ async function main() {
             log.info({ jobId: job.id, ...report }, "catalog report");
             return report;
           }
+          if (job.name === "knowledge-ingest") {
+            const reports = await ingestAll(h.db, c.customerId, sources, (m, d) => log.info(d ?? {}, m));
+            const changed = Object.values(reports).some((r) => r.upserted || r.tombstoned || r.aclChanged);
+            let sync: unknown = "skipped";
+            if (changed && c.knowledge.provider === "lightrag") {
+              const k = c.knowledge;
+              sync = await lightragSync(h.db, c.customerId, k.partitions, k.apiKey, k.timeoutMs, (m) => log.info(m));
+            }
+            log.info({ reports, sync }, "scheduled ingestion");
+            return { sources: Object.keys(reports).length, changed };
+          }
           if (job.name === "action-maintenance") {
             const expired = await actions.expireStale();
             const recovered = await actions.recoverInterrupted();
@@ -164,6 +178,7 @@ async function main() {
       const queue = new Queue(QUEUE, { connection });
       await queue.upsertJobScheduler("catalog-report-hourly", { every: 60 * 60 * 1000 }, { name: "catalog-report" });
       await queue.upsertJobScheduler("action-maintenance", { every: 60 * 1000 }, { name: "action-maintenance" });
+      await queue.upsertJobScheduler("knowledge-ingest", { every: c.ingestion.intervalMinutes * 60 * 1000 }, { name: "knowledge-ingest" });
       await actions.recoverInterrupted(0); // anything 'executing' at startup was interrupted
       let stopping = false;
       const outboxLoop = (async () => {
@@ -191,8 +206,26 @@ async function main() {
       return;
     }
     default:
-      throw new Error(`unknown command ${cmd} (migrate | seed | ragflow-ingest | lightrag-sync | mcp-pins | healthcheck | start)`);
+      throw new Error(`unknown command ${cmd} (migrate | seed | ingest [sourceId] [--sync] | ragflow-ingest | lightrag-sync | mcp-pins | healthcheck | start)`);
   }
+}
+
+/** Converges LightRAG partitions with the catalog, reading text from the platform content store. */
+async function lightragSync(db: ReturnType<typeof connectDatabase>["db"], customerId: string, partitions: LightRagPartition[], apiKey: string, timeoutMs: number, log: (m: string) => void) {
+  const repos = createRepositories(db);
+  return syncLightRagPartitions(
+    partitions,
+    { apiKey, timeoutMs },
+    {
+      listAll: () => repos.catalog.listAll(customerId),
+      setExternalRef: (documentId, ref) => repos.catalog.setExternalRef(customerId, documentId, ref),
+      content: async (doc) => {
+        const r = await repos.content.get(customerId, doc.documentId);
+        return r && r.version === doc.version ? r.text : undefined;
+      },
+    },
+    log,
+  );
 }
 
 main().catch((err) => {

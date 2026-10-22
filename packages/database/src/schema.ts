@@ -331,3 +331,60 @@ export const outboxEvents = pgTable(
   },
   (t) => [uniqueIndex("outbox_events_dedupe_uq").on(t.type, t.aggregateId), index("outbox_events_pending_idx").on(t.processedAt, t.availableAt)],
 );
+
+/** The platform's own parsed copy of each document version (feeds RAG sync and document views). */
+export const documentContent = pgTable(
+  "document_content",
+  {
+    customerId: text("customer_id").notNull(),
+    documentId: text("document_id").notNull(),
+    version: text("version").notNull(),
+    mimeType: text("mime_type").notNull(),
+    text: text("text").notNull(),
+    contentHash: text("content_hash").notNull(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.customerId, t.documentId] })],
+);
+
+export interface SourceRunReport {
+  startedAt: string;
+  finishedAt: string;
+  full: boolean;
+  upserted: number;
+  unchanged: number;
+  tombstoned: number;
+  quarantined: number;
+  stillQuarantined?: number;
+  aclChanged?: number;
+  unmappedAcl: number;
+  error?: string;
+}
+
+/** Per-source change cursor and last run report. */
+export const sourceSyncState = pgTable(
+  "source_sync_state",
+  {
+    customerId: text("customer_id").notNull(),
+    sourceId: text("source_id").notNull(),
+    cursor: text("cursor"),
+    lastRun: jsonb("last_run").$type<SourceRunReport>(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.customerId, t.sourceId] })],
+);
+
+/** Items that failed ingestion. Never indexed, never searchable; retried when the item changes. */
+export const sourceQuarantine = pgTable(
+  "source_quarantine",
+  {
+    customerId: text("customer_id").notNull(),
+    sourceId: text("source_id").notNull(),
+    externalId: text("external_id").notNull(),
+    version: text("version").notNull(),
+    reason: text("reason").notNull(),
+    detail: text("detail"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.customerId, t.sourceId, t.externalId] })],
+);

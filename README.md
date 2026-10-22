@@ -61,7 +61,8 @@ agents/meeting-prep      Phase 6 placeholder (README only)
 infra/compose            Compose base, dev overlay, Caddy, LightRAG + Ollama overlay, RAGFlow overlay
 infra/docker/Dockerfile  Multi-target image build (api, worker, web)
 fixtures/                Synthetic identities and Project Atlas documents
-docs/adr                 Architecture decisions (0001–0005)
+docs/adr                 Architecture decisions (0001–0009)
+docs/ROADMAP.md          What's done, what's next, decisions waiting for you
 scripts/smoke.mjs        End-to-end demonstration check over HTTP
 scripts/lightrag-live-check.mjs  Live ACL-change / tombstone / deletion check against real LightRAG
 scripts/integration-live-check.mjs  Live router + MCP + approval + egress check (real local model)
@@ -111,6 +112,29 @@ Re-run `lightrag-sync` after changing fixtures, ACLs or tombstones. Access
 checks apply immediately. The sync only makes the physical index catch up,
 and it confirms each deletion. How the partitions work and why is in
 [ADR 0006](docs/adr/0006-lightrag-partitioned-backend.md).
+
+## Sources and ingestion (ADR 0009)
+
+Indexed content comes from **sources**. Each source is a thin, system-specific
+`SourceAdapter` (list changes, fetch content, native permissions) feeding one
+generic pipeline. The pipeline handles parsing, permission mapping,
+quarantine, the platform content store, deletion and the RAG sync.
+
+- **Built in:**
+  - `fixture`: the synthetic Atlas documents.
+  - `folder`: a file share, where `.acl.json` files are inherited down folders.
+    See `fixtures/sources/team-share`.
+- **Configure** with `KNOWLEDGE_SOURCES` (JSON, see `.env.example`). Native
+  groups map to platform groups through `aclMap`. Unmapped groups are dropped,
+  and a document left with no platform group is unsearchable.
+- **Run once:** `node dist/main.js ingest [sourceId] [--sync]` in the worker
+  (locally: `pnpm --filter @platform/worker cli ingest`).
+- **Scheduled:** the worker ingests every `INGEST_INTERVAL_MINUTES` (default
+  15). If anything changed, it then syncs LightRAG.
+- **Inspect:** each source's last run report is in `source_sync_state`, and
+  failed items with their reason are in `source_quarantine`.
+- **New systems** (SharePoint, Jira, SMB) add only an adapter plus its
+  permission mapping. See ADR 0009 for the planned adapters.
 
 ## Quick start D — integrations: real local model, MCP and approvals
 

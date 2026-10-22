@@ -345,6 +345,47 @@ describe("integrations: context router, MCP and approvals", () => {
   });
 });
 
+describe("ingested folder source (team-share)", () => {
+  const SHARE_CANARY = "FORBIDDEN-CANARY-SHARE-9K2";
+  const ids = (r: { json: { evidence: { documentId: string }[] } }) => r.json.evidence.map((e) => e.documentId);
+
+  it("maps inherited share permissions through the generic pipeline", async () => {
+    const alice = await as("alice");
+    const a = await alice.req("POST", "/api/knowledge/search", { query: "Northwind solutions architect escalations", limit: 10 });
+    expect(ids(a)).toContain("team-share:atlas_vendor-contacts.md");
+    const legal = await alice.req("POST", "/api/knowledge/search", { query: "Northwind settlement negotiation position", limit: 10 });
+    expect(legal.text).not.toContain(SHARE_CANARY);
+    expect((await alice.req("GET", "/api/knowledge/documents/team-share:atlas_legal_settlement-notes.txt")).status).toBe(404);
+
+    const carol = await as("carol");
+    const c = await carol.req("POST", "/api/knowledge/search", { query: "Northwind settlement negotiation position", limit: 10 });
+    expect(c.text).toContain(SHARE_CANARY);
+
+    const bob = await as("bob");
+    const b = await bob.req("POST", "/api/knowledge/search", { query: "laptop lost stolen device Northwind Atlas", limit: 10 });
+    expect([...new Set(ids(b))]).toEqual(["team-share:handbook_it-equipment-policy.md"]);
+  });
+
+  it("keeps unmapped-permission documents unsearchable and quarantines unsupported files", async () => {
+    for (const p of ["alice", "bob", "carol"]) {
+      const s = await as(p);
+      const r = await s.req("POST", "/api/knowledge/search", { query: "contractor onboarding temporary account", limit: 10 });
+      expect(ids(r)).not.toContain("team-share:contractors_onboarding.md");
+    }
+    const q = await createRepositories(db).sources.listQuarantine("cust_demo", "team-share");
+    expect(q.map((x) => [x.externalId, x.reason])).toEqual([["atlas/architecture-diagram.pdf", "unsupported_type"]]);
+    const state = await createRepositories(db).sources.getState("cust_demo", "team-share");
+    expect(state?.lastRun).toMatchObject({ full: true, unmappedAcl: 1 });
+  });
+
+  it("serves the protected document view from the content store", async () => {
+    const alice = await as("alice");
+    const r = await alice.req("GET", "/api/knowledge/documents/team-share:atlas_cutover-runbook.html");
+    expect(r.status).toBe(200);
+    expect(r.json.chunks.map((c: { location?: string }) => c.location)).toEqual(expect.arrayContaining(["Before cutover", "Cutover night"]));
+  });
+});
+
 describe("development authentication switch", () => {
   it("is unavailable when DEV_AUTH_ENABLED is false", async () => {
     const off = await boot({ DEV_AUTH_ENABLED: "false" });

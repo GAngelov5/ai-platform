@@ -2,7 +2,7 @@ import { defineAgent } from "@platform/agents";
 
 export const projectAssistant = defineAgent({
   id: "project-assistant",
-  version: "0.2.0",
+  version: "0.3.0",
   name: "Project Assistant",
   description:
     "Explains project history, decisions and blockers from authorized documents, checks live task status, and prepares tracker comments for your approval.",
@@ -11,7 +11,7 @@ Explain project history, decisions, delays and blockers from the documents, and 
 Be concise: a short summary sentence, then the key points as bullet points.
 Never speculate about causes that the evidence does not state.`,
   capabilities: ["knowledge.search", "tracker.tasks.list", "tracker.task.status", "tracker.task.comment"],
-  knowledgeScopes: { sourceIds: ["atlas-project-docs", "company-handbook"] },
+  knowledgeScopes: { sourceIds: ["atlas-project-docs", "company-handbook", "team-share"] },
   outputSchema: "cited-answer@1",
   limits: {
     maxToolCalls: 4,

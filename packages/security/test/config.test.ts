@@ -80,6 +80,8 @@ describe("platform configuration", () => {
       { id: "p_b", url: "http://b:9621", sourceId: "s", aclGroups: ["h", "g"] },
     ]);
     expect(problems({ ...lr, LIGHTRAG_PARTITIONS: dup }).join()).toMatch(/same source and ACL/);
+    const multi = JSON.stringify([{ id: "p_a", url: "http://a:9621", sourceIds: ["s", "t"], aclGroups: ["g"] }]);
+    expect(problems({ ...lr, LIGHTRAG_PARTITIONS: multi })).toEqual([]);
   });
 
   it("treats empty optional values as unset", () => {

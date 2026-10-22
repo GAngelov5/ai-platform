@@ -88,12 +88,21 @@ const carol = await new Session().login("carol");
 const Q = "Why was Project Atlas delayed?";
 
 const t0 = Date.now();
-const a = await alice.ask(Q);
-check("alice: grounded answer via LightRAG", a.status === "answered" && a.citations.length > 0, `${a.status}, ${a.citations.length} citations, ${Date.now() - t0}ms`);
-check("alice: no restricted memo", !JSON.stringify(a).includes("FORBIDDEN-CANARY-7Q4X"));
+// Retrieval and permissions only: answer quality with the real model is covered by integration-live-check.mjs.
+const aliceSearch = await alice.req("POST", "/api/knowledge/search", { query: Q, limit: 10 });
+const aliceDocs = aliceSearch.json.evidence.map((e) => e.documentId);
+check("alice: supporting evidence via LightRAG", aliceDocs.includes("atlas-status-2026-04"), `${aliceDocs.length} chunks, ${Date.now() - t0}ms`);
+check("alice: no restricted memo", !aliceSearch.text.includes("FORBIDDEN-CANARY-7Q4X"));
 const bobDocs = await bob.docs(Q);
 check("bob: no Atlas documents (all-staff FAQ may appear as low-relevance evidence)", !bobDocs.some((d) => d.startsWith("atlas-")), bobDocs.join(","));
 check("carol: memo retrieved from finance-legal partition", (await carol.docs("Atlas Northwind contract dispute settlement")).includes("atlas-contract-dispute"));
+
+// --- 1b. Ingested folder source (ADR 0009) sharing access-set partitions ------------
+check("alice: share file from the Atlas folder via LightRAG", (await alice.docs("Northwind solutions architect escalations vendor contacts")).includes("team-share:atlas_vendor-contacts.md"));
+check("alice: never the share's legal file", !(await alice.docs("Northwind settlement negotiation position")).includes("team-share:atlas_legal_settlement-notes.txt"));
+check("carol: share's legal file from the finance-legal partition", (await carol.docs("Northwind settlement negotiation position")).includes("team-share:atlas_legal_settlement-notes.txt"));
+const bobShare = await bob.docs("laptop replaced lost stolen device");
+check("bob: all-staff share file only", bobShare.length > 0 && bobShare.every((d) => d === "team-share:handbook_it-equipment-policy.md" || d === "office-relocation-faq"), bobShare.join(","));
 
 // --- 2. ACL change -----------------------------------------------------------
 sql(`update source_documents set acl_groups='["finance-legal"]'::jsonb, acl_revision=acl_revision+1 where document_id='atlas-status-2026-04'`);
