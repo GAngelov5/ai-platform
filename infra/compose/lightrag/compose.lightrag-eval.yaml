@@ -20,8 +20,18 @@ x-eval-env: &eval-env
 
 services:
   api:
-    # LIGHTRAG_RANKING=native measures LightRAG's own ordering (ADR 0010).
-    environment: { <<: *eval-env, LIGHTRAG_RANKING: "${LIGHTRAG_RANKING:-lexical}" }
+    # Eval switches (ADR 0010), all passed from the shell:
+    #   EVAL_KNOWLEDGE_PROVIDER=fixture  the lexical backend over the content store
+    #   LIGHTRAG_RANKING=native          LightRAG's own ordering
+    #   EVIDENCE_SCORING=semantic        embedding-similarity evidence score via Ollama
+    environment:
+      <<: *eval-env
+      KNOWLEDGE_PROVIDER: "${EVAL_KNOWLEDGE_PROVIDER:-lightrag}"
+      LIGHTRAG_RANKING: "${LIGHTRAG_RANKING:-lexical}"
+      EVIDENCE_SCORING: "${EVIDENCE_SCORING:-lexical}"
+      EMBEDDING_BASE_URL: http://ollama:11434
+      SEMANTIC_SCORE_FLOOR: "${SEMANTIC_SCORE_FLOOR:-0.15}"
+      SEMANTIC_SCORE_CEIL: "${SEMANTIC_SCORE_CEIL:-0.9}"
   worker:
     environment: *eval-env
   lightrag-sync:

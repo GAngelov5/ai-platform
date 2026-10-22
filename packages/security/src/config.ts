@@ -42,6 +42,15 @@ const EnvSchema = z.object({
   LIGHTRAG_RANKING: z.enum(["lexical", "native"]).default("lexical"),
   LIGHTRAG_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(60000),
 
+  /** How evidence is scored: query-term overlap, or embedding similarity (ADR 0010). */
+  EVIDENCE_SCORING: z.enum(["lexical", "semantic"]).default("lexical"),
+  EMBEDDING_BASE_URL: z.string().url().optional(),
+  EMBEDDING_MODEL: z.string().min(1).default("nomic-embed-text"),
+  EMBEDDING_TIMEOUT_MS: z.coerce.number().int().min(500).max(120000).default(15000),
+  /** Cosine mapped to evidence score 0 and 1. Defaults (nomic-embed-text): cosine 0.60 → score 0.6, calibrated on the eval sets for no wrong refusals (ADR 0010). */
+  SEMANTIC_SCORE_FLOOR: z.coerce.number().min(-1).max(1).default(0.15),
+  SEMANTIC_SCORE_CEIL: z.coerce.number().min(-1).max(1).default(0.9),
+
   /** JSON list of knowledge sources (packages/knowledge SourcesConfigSchema); defaults to the synthetic sources. */
   KNOWLEDGE_SOURCES: z.string().optional(),
   INGEST_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(15),
@@ -84,6 +93,9 @@ export interface PlatformConfig {
         timeoutMs: number;
         fixturesDir?: string;
       };
+  evidenceScoring:
+    | { mode: "lexical" }
+    | { mode: "semantic"; baseUrl: string; model: string; timeoutMs: number; floor: number; ceil: number };
   integrations: { mcpServersJson?: string; proposalTtlMinutes: number };
   ingestion: { sourcesJson?: string; intervalMinutes: number; includeEvalCorpus: boolean };
   model:
@@ -174,6 +186,12 @@ export function loadPlatformConfig(
     }
   }
 
+  if (e.EVIDENCE_SCORING === "semantic") {
+    if (!e.EMBEDDING_BASE_URL) problems.push("EMBEDDING_BASE_URL is required when EVIDENCE_SCORING=semantic");
+    else if (!isLocalHostname(new URL(e.EMBEDDING_BASE_URL).hostname)) problems.push("EMBEDDING_BASE_URL must point at the private network");
+    if (!(e.SEMANTIC_SCORE_CEIL > e.SEMANTIC_SCORE_FLOOR)) problems.push("SEMANTIC_SCORE_CEIL must be above SEMANTIC_SCORE_FLOOR");
+  }
+
   // --- Model -------------------------------------------------------------------
   if (prod && e.MODEL_PROVIDER === "fake") problems.push("production must not use the fake model provider");
   if (e.MODEL_PROVIDER === "openai-compatible") {
@@ -244,6 +262,17 @@ export function loadPlatformConfig(
               fixturesDir: e.FIXTURES_DIR,
             }
           : { provider: "fixture", fixturesDir: e.FIXTURES_DIR },
+    evidenceScoring:
+      e.EVIDENCE_SCORING === "semantic"
+        ? {
+            mode: "semantic",
+            baseUrl: e.EMBEDDING_BASE_URL!,
+            model: e.EMBEDDING_MODEL,
+            timeoutMs: e.EMBEDDING_TIMEOUT_MS,
+            floor: e.SEMANTIC_SCORE_FLOOR,
+            ceil: e.SEMANTIC_SCORE_CEIL,
+          }
+        : { mode: "lexical" },
     integrations: { mcpServersJson: e.MCP_SERVERS, proposalTtlMinutes: e.ACTION_PROPOSAL_TTL_MINUTES },
     ingestion: { sourcesJson: e.KNOWLEDGE_SOURCES, intervalMinutes: e.INGEST_INTERVAL_MINUTES, includeEvalCorpus: e.KNOWLEDGE_INCLUDE_EVAL_CORPUS },
     model:

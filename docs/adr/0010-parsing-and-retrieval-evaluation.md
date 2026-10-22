@@ -112,7 +112,47 @@ question set:
 - questions that need two documents
 - more near-miss questions like q29
 
-That set is the next eval step, before real data.
+### Hard question set
+
+`fixtures/eval/questions-hard.json` has 22 hand-written questions over the
+same corpus, so nothing needs re-indexing:
+- 13 paraphrases that avoid the documents' own words
+- 4 multi-document questions, which need every listed file in the top 5
+- 5 near-misses that look answerable but are not
+
+Run it with `EVAL_QUESTIONS=fixtures/eval/questions-hard.json`.
+
+| Backend | Recall@5 | Paraphrase | Multi-doc | Abstention (proxy) | False abstention |
+|---|---|---|---|---|---|
+| Lexical ([report](../eval/2026-10-22-lexical-hard.md)) | 52.9% | 6/13 | 3/4 | 40% | 64.7% |
+| LightRAG, lexical re-ranking ([report](../eval/2026-10-22-lightrag-hard.md)) | **70.6%** | 9/13 | 3/4 | 40% | 64.7% |
+| LightRAG, native ranking ([report](../eval/2026-10-22-lightrag-native-hard.md)) | 64.7% | 9/13 | 2/4 | 40% | 70.6% |
+
+Zero leaks in every run. What this shows:
+
+1. **LightRAG retrieves paraphrases better** than term matching (9/13 vs
+   6/13). LightRAG's candidates plus our lexical re-ranking score best
+   overall. No backend reaches the 85% gate.
+2. **The evidence score is the bottleneck.** It is query-term overlap, so
+   correctly retrieved paraphrase evidence scores below the agent's 0.6
+   threshold. 65–71% of answerable hard questions would be refused. A
+   paraphrase-robust platform needs a semantic evidence score: embedding
+   similarity, or a cross-encoder re-ranker computed by the platform, and
+   calibrated on this set.
+3. **Alias questions fail everywhere.** h03 and h04 ask about "the HR
+   self-service launch" and "the field service app". The go-live plans only
+   say "Ember" and "Cedar"; the link is in other documents. LightRAG's entity
+   graph, built with `qwen2.5:3b`, did not make that link. A larger
+   extraction model, or document metadata such as a project alias list, is
+   needed.
+4. **"Compare old and new" competes with version handling.** h15 needs v1
+   and v2 together. Moving superseded chunks after current ones pushes v1
+   out of the top 5. The agent should search the old version explicitly when
+   asked about changes; this is a prompt and runtime concern, not a ranking
+   one.
+5. **Near-misses** (Japan per diem, December blocker, parental leave) all
+   pass the score threshold, which confirms that refusing them is the
+   model's job.
 
 **Abstention cannot be tuned out of a score threshold.** The remaining failure
 is q29, "What is the per diem for travel to the Moon?". It matches the travel
@@ -126,6 +166,70 @@ near-miss question is the model's job: it has to read the travel policy and
 state that it covers no Moon travel. That is measured with model answers,
 together with citation support.
 
+## Decision 4 — An optional semantic evidence score, calibrated for no wrong refusals
+
+Finding 2 showed that the term-overlap score refuses most answerable
+paraphrases. `SemanticScoringAdapter` (`EVIDENCE_SCORING=semantic`) wraps any
+backend:
+1. It asks the backend for 3× the candidates, from authorized documents only.
+2. It embeds the query and the candidate chunks with local Ollama
+   (`nomic-embed-text`, with its query and document prefixes). Document
+   embeddings are cached.
+3. It re-ranks by cosine similarity and maps cosine linearly from
+   `[SEMANTIC_SCORE_FLOOR, SEMANTIC_SCORE_CEIL]` to the 0–1 evidence score.
+
+If the embedder fails, search fails closed, the same as a backend outage.
+The embedding endpoint must be on the private network.
+
+### Calibration
+
+`scripts/calibrate-semantic.mjs` reads eval runs made with floor 0 and
+ceiling 1, so every evidence score is the raw cosine. What it found, over
+43 answerable, 5 off-topic and 5 near-miss questions:
+
+| Cosine threshold | Answerable wrongly refused (LightRAG / lexical) | Off-topic still answered | Near-miss refused |
+|---|---|---|---|
+| 0.60 | 1 / 2 of 43 | 5 / 5 | 0 / 5 |
+| 0.65 | 3 / 3 | 3 / 5 | 0 / 5 |
+| 0.71 | 11 / 6 | 0 / 1 | 0 / 5 |
+| 0.77 | 16 / 10 | 0 / 0 | 4 / 2 |
+
+- **Near-misses have higher cosine than real answers.** For example, "per
+  diem for Japan" scores 0.76 against the travel policy, and "rotation for
+  regular accounts" scores 0.87 against the password policy. Paraphrased
+  answers range from 0.56 to 0.83. No threshold separates them.
+- **Off-topic questions also score high.** `nomic-embed-text` gives them a
+  baseline cosine of 0.65–0.73 (e.g. "football club sponsors the Cedar
+  app"). Refusing all of them means wrongly refusing 15–26% of answerable
+  questions.
+
+**Decision:** calibrate for no wrong refusals. Cosine 0.60 maps to the
+agent's 0.6 threshold, giving floor 0.15 and ceiling 0.90 (the config
+defaults). The threshold now only filters noise. Refusing near-miss and
+off-topic questions is the model's job, measured by the answer-level gate.
+
+| Run (semantic, calibrated) | Recall@5 | False abstention | Abstention (proxy) | Leaks |
+|---|---|---|---|---|
+| LightRAG, base ([report](../eval/2026-10-22-lightrag-semantic.md)) | 100% | 0% | 0% | 0 |
+| LightRAG, hard ([report](../eval/2026-10-22-lightrag-semantic-hard.md)) | 70.6% | **0%** (was 64.7%) | 0% | 0 |
+| Lexical, base ([report](../eval/2026-10-22-lexical-semantic.md)) | 100% | 0% | 0% | 0 |
+| Lexical, hard ([report](../eval/2026-10-22-lexical-semantic-hard.md)) | 52.9% | 11.8% (was 64.7%) | 0% | 0 |
+
+The semantic score also slightly changes ranking. LightRAG paraphrase recall
+goes from 9/13 to 10/13, but multi-document recall drops from 3/4 to 2/4,
+because similarity favours the single closest document. Embedding adds
+about 50–500 ms per search on CPU, or less once document embeddings are
+cached.
+
+**Trade-off, stated plainly:** with lexical scoring, the platform itself
+refuses most off-topic questions (4 of 5) but also most paraphrases. With
+semantic scoring, it refuses neither, and the model must do both. Semantic
+scoring is therefore the right default only together with a model that
+passes the answer-level abstention gate. Until then it stays opt-in
+(`EVIDENCE_SCORING=lexical` remains the default). A cross-encoder re-ranker
+would give a better-calibrated relevance score, and is the next option to
+evaluate.
+
 ## Not covered (yet)
 
 - **Citation support and model-level abstention.** These need real model
@@ -134,8 +238,10 @@ together with citation support.
 - **OCR** for the three scans.
 - **Partition scale.** The eval corpus produced only the three existing
   access sets, so it does not answer this question.
-- **Backend discrimination.** See "How to read the LightRAG rows": a
-  paraphrase question set is needed.
+- **A cross-encoder re-ranker** as the evidence score, compared with
+  embedding similarity on the same sets (Decision 4).
+- **Default scoring:** switch to semantic once the model passes the
+  answer-level abstention gate.
 
 ## Open questions
 

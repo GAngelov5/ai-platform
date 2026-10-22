@@ -1,0 +1,488 @@
+{
+  "summary": {
+    "label": "calib-lightrag-hard",
+    "date": "2026-10-22T12:18:10.082Z",
+    "base": "https://localhost:8443",
+    "corpusFiles": 110,
+    "questions": 22,
+    "recallAt5": 70.6,
+    "abstentionProxy": 0,
+    "falseAbstentionProxy": 0,
+    "latestVersionRankedFirst": 100,
+    "unauthorizedResults": 0,
+    "latencyMs": {
+      "p50": 148,
+      "p95": 224,
+      "max": 285
+    },
+    "byCategory": {
+      "paraphrase": "10/13",
+      "multi-document": "2/4"
+    },
+    "retriedAfter503": []
+  },
+  "rows": [
+    {
+      "id": "h01",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "paraphrase",
+      "question": "Why was the analytics platform held back in May 2026?",
+      "ms": 217,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.71,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_borealis_status-2026-08.html",
+        "eval-corpus:projects_borealis_status-2026-05.docx",
+        "eval-corpus:projects_borealis_status-2026-06.pdf",
+        "eval-corpus:projects_borealis_status-2026-04.md",
+        "eval-corpus:projects_borealis_status-2026-07.md"
+      ]
+    },
+    {
+      "id": "h02",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "paraphrase",
+      "question": "What slowed down the warehouse robots in April 2026?",
+      "ms": 145,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.71,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_dune_status-2026-04.md",
+        "eval-corpus:projects_dune_status-2026-05.docx",
+        "eval-corpus:projects_dune_status-2026-07.md",
+        "eval-corpus:projects_dune_status-2026-06.pdf",
+        "eval-corpus:projects_dune_status-2026-08.html"
+      ]
+    },
+    {
+      "id": "h03",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "paraphrase",
+      "question": "When is the HR self-service launch now expected?",
+      "ms": 138,
+      "hit": false,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.68,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_ember_status-2026-08.html",
+        "eval-corpus:projects_ember_status-2026-07.md",
+        "eval-corpus:projects_ember_status-2026-06.pdf",
+        "eval-corpus:projects_ember_status-2026-09.docx",
+        "eval-corpus:projects_ember_status-2026-05.docx"
+      ]
+    },
+    {
+      "id": "h04",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "paraphrase",
+      "question": "When will the field service app be launched?",
+      "ms": 151,
+      "hit": false,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.7,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_cedar_status-2026-08.html",
+        "eval-corpus:projects_cedar_status-2026-07.md",
+        "eval-corpus:projects_cedar_status-2026-09.docx",
+        "eval-corpus:projects_cedar_status-2026-04.md",
+        "eval-corpus:projects_cedar_status-2026-05.docx"
+      ]
+    },
+    {
+      "id": "h05",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "paraphrase",
+      "question": "How long can technicians keep working without a connection in the mobile app?",
+      "ms": 171,
+      "hit": false,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.63,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_remote-work-policy.md",
+        "eval-corpus:projects_cedar_status-2026-06.pdf",
+        "eval-corpus:projects_cedar_status-2026-05.docx",
+        "eval-corpus:projects_cedar_status-2026-09.docx",
+        "eval-corpus:projects_cedar_status-2026-07.md"
+      ]
+    },
+    {
+      "id": "h06",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "paraphrase",
+      "question": "How long are raw billing records retained on the analytics platform?",
+      "ms": 150,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.7,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_borealis_steering-minutes-1.docx",
+        "eval-corpus:projects_borealis_spec-ingestion.pdf",
+        "eval-corpus:projects_borealis_status-2026-08.html",
+        "atlas-status-2026-04",
+        "eval-corpus:projects_borealis_status-2026-07.md"
+      ]
+    },
+    {
+      "id": "h07",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "paraphrase",
+      "question": "How frequently are the encryption keys changed for the analytics data?",
+      "ms": 224,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.73,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_borealis_spec-encryption.pdf",
+        "eval-corpus:projects_borealis_status-2026-08.html",
+        "eval-corpus:projects_borealis_status-2026-07.md",
+        "eval-corpus:projects_borealis_status-2026-05.docx",
+        "atlas-steering-2026-05-12"
+      ]
+    },
+    {
+      "id": "h08",
+      "principal": "bob",
+      "type": "answerable",
+      "category": "paraphrase",
+      "question": "How much money do I get per day when travelling in Europe for work?",
+      "ms": 111,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.75,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_travel-policy.md",
+        "eval-corpus:policies_remote-work-policy.md",
+        "eval-corpus:policies_expense-policy.html",
+        "eval-corpus:policies_training-policy.html",
+        "eval-corpus:policies_wellbeing-programme.docx"
+      ]
+    },
+    {
+      "id": "h09",
+      "principal": "bob",
+      "type": "answerable",
+      "category": "paraphrase",
+      "question": "How long do I have to hand in receipts to get reimbursed?",
+      "ms": 167,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.69,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_expense-policy.html",
+        "eval-corpus:policies_leave-policy.docx",
+        "eval-corpus:policies_sick-leave-policy.docx",
+        "team-share:handbook_it-equipment-policy.md",
+        "eval-corpus:policies_meeting-room-guide.md"
+      ]
+    },
+    {
+      "id": "h10",
+      "principal": "bob",
+      "type": "answerable",
+      "category": "paraphrase",
+      "question": "Can I keep confidential company data on my own phone?",
+      "ms": 92,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.6,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_data-classification.docx",
+        "eval-corpus:policies_mobile-phone-policy.md",
+        "eval-corpus:policies_whistleblowing.pdf",
+        "eval-corpus:policies_recycling-guide.html",
+        "eval-corpus:policies_remote-work-policy.md"
+      ]
+    },
+    {
+      "id": "h11",
+      "principal": "bob",
+      "type": "answerable",
+      "category": "paraphrase",
+      "question": "How much does the company pay towards my gym?",
+      "ms": 101,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.7,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_wellbeing-programme.docx",
+        "eval-corpus:policies_training-policy.html",
+        "eval-corpus:newsletters_newsletter-15.md",
+        "eval-corpus:newsletters_newsletter-01.md",
+        "eval-corpus:newsletters_newsletter-03.md"
+      ]
+    },
+    {
+      "id": "h12",
+      "principal": "bob",
+      "type": "answerable",
+      "category": "paraphrase",
+      "question": "What should I do if I am ill and cannot come to work?",
+      "ms": 123,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.68,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_sick-leave-policy.docx",
+        "eval-corpus:policies_remote-work-policy.md",
+        "eval-corpus:policies_holiday-calendar.pdf",
+        "eval-corpus:newsletters_newsletter-07.md",
+        "eval-corpus:newsletters_newsletter-03.md"
+      ]
+    },
+    {
+      "id": "h13",
+      "principal": "bob",
+      "type": "answerable",
+      "category": "paraphrase",
+      "question": "How many offers do I need before buying something expensive?",
+      "ms": 102,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.65,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_procurement-policy.html",
+        "eval-corpus:policies_code-of-conduct.pdf",
+        "eval-corpus:policies_meeting-room-guide.md",
+        "eval-corpus:policies_expense-policy.html",
+        "eval-corpus:policies_visitor-policy.md"
+      ]
+    },
+    {
+      "id": "h14",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "multi-document",
+      "question": "How did the main Borealis blocker change between May and June 2026?",
+      "ms": 151,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.8,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_borealis_status-2026-05.docx",
+        "eval-corpus:projects_borealis_status-2026-06.pdf",
+        "eval-corpus:projects_borealis_status-2026-07.md",
+        "eval-corpus:projects_borealis_status-2026-08.html",
+        "eval-corpus:projects_borealis_status-2026-04.md"
+      ]
+    },
+    {
+      "id": "h15",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "multi-document",
+      "question": "Compare the original and the current go-live date for Dune.",
+      "ms": 171,
+      "hit": false,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.83,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_dune_go-live-plan-v2.md",
+        "eval-corpus:projects_dune_status-2026-05.docx",
+        "eval-corpus:projects_dune_status-2026-08.html",
+        "eval-corpus:projects_dune_status-2026-04.md",
+        "eval-corpus:projects_dune_status-2026-07.md"
+      ]
+    },
+    {
+      "id": "h16",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "multi-document",
+      "question": "What did the Cedar steering committee decide about photo uploads, and how are Cedar maps refreshed?",
+      "ms": 153,
+      "hit": false,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.78,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_cedar_steering-minutes-4.docx",
+        "eval-corpus:projects_cedar_steering-minutes-1.docx",
+        "eval-corpus:projects_cedar_steering-minutes-3.docx",
+        "eval-corpus:projects_cedar_steering-minutes-2.docx",
+        "eval-corpus:projects_cedar_status-2026-06.pdf"
+      ]
+    },
+    {
+      "id": "h17",
+      "principal": "carol",
+      "type": "answerable",
+      "category": "multi-document",
+      "question": "What is the Ember budget for 2027, and what liability cap did legal accept for Ember's vendor?",
+      "ms": 285,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.77,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:finance-legal_ember-budget.docx",
+        "eval-corpus:finance-legal_ember-legal-review.md",
+        "eval-corpus:finance-legal_ember-contract.pdf",
+        "eval-corpus:finance-legal_cedar-legal-review.md",
+        "eval-corpus:projects_ember_status-2026-07.md"
+      ]
+    },
+    {
+      "id": "h18",
+      "principal": "bob",
+      "type": "unanswerable",
+      "category": "near-miss",
+      "question": "What is the daily per diem for business travel to Japan?",
+      "ms": 109,
+      "hit": null,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.76,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_travel-policy.md",
+        "eval-corpus:policies_remote-work-policy.md",
+        "eval-corpus:policies_expense-policy.html",
+        "eval-corpus:policies_wellbeing-programme.docx",
+        "eval-corpus:policies_training-policy.html"
+      ]
+    },
+    {
+      "id": "h19",
+      "principal": "bob",
+      "type": "unanswerable",
+      "category": "near-miss",
+      "question": "How often must passwords for regular user accounts be rotated?",
+      "ms": 108,
+      "hit": null,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.87,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_password-policy.pdf",
+        "eval-corpus:policies_remote-work-policy.md",
+        "team-share:handbook_it-equipment-policy.md",
+        "eval-corpus:policies_leave-policy.docx",
+        "eval-corpus:policies_visitor-policy.md"
+      ]
+    },
+    {
+      "id": "h20",
+      "principal": "alice",
+      "type": "unanswerable",
+      "category": "near-miss",
+      "question": "What was the main blocker for Borealis in December 2026?",
+      "ms": 143,
+      "hit": null,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.77,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_borealis_status-2026-07.md",
+        "eval-corpus:projects_borealis_status-2026-06.pdf",
+        "eval-corpus:projects_borealis_status-2026-04.md",
+        "eval-corpus:projects_borealis_status-2026-05.docx",
+        "eval-corpus:projects_borealis_status-2026-08.html"
+      ]
+    },
+    {
+      "id": "h21",
+      "principal": "alice",
+      "type": "unanswerable",
+      "category": "near-miss",
+      "question": "What is the current planned go-live date for the Falcon project?",
+      "ms": 148,
+      "hit": null,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.72,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "atlas-steering-2026-05-12",
+        "eval-corpus:projects_dune_go-live-plan-v2.md",
+        "eval-corpus:projects_borealis_go-live-plan-v2.md",
+        "eval-corpus:projects_cedar_go-live-plan-v2.md",
+        "eval-corpus:projects_ember_go-live-plan-v2.md"
+      ]
+    },
+    {
+      "id": "h22",
+      "principal": "bob",
+      "type": "unanswerable",
+      "category": "near-miss",
+      "question": "How many days of parental leave do employees receive?",
+      "ms": 141,
+      "hit": null,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.75,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_leave-policy.docx",
+        "eval-corpus:policies_remote-work-policy.md",
+        "eval-corpus:policies_sick-leave-policy.docx",
+        "eval-corpus:policies_password-policy.pdf",
+        "team-share:handbook_it-equipment-policy.md"
+      ]
+    }
+  ]
+}

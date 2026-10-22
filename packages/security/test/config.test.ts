@@ -84,6 +84,16 @@ describe("platform configuration", () => {
     expect(problems({ ...lr, LIGHTRAG_PARTITIONS: multi })).toEqual([]);
   });
 
+  it("validates semantic evidence scoring", () => {
+    const base = { DATABASE_URL: "postgres://u:p@db/x", EVIDENCE_SCORING: "semantic" };
+    expect(problems(base).join()).toMatch(/EMBEDDING_BASE_URL is required/);
+    expect(problems({ ...base, EMBEDDING_BASE_URL: "https://embeddings.example.com" }).join()).toMatch(/private network/);
+    expect(problems({ ...base, EMBEDDING_BASE_URL: "http://ollama:11434", SEMANTIC_SCORE_FLOOR: "0.6", SEMANTIC_SCORE_CEIL: "0.5" }).join()).toMatch(/CEIL must be above/);
+    const c = loadPlatformConfig({ ...base, EMBEDDING_BASE_URL: "http://ollama:11434" });
+    expect(c.evidenceScoring).toMatchObject({ mode: "semantic", model: "nomic-embed-text", baseUrl: "http://ollama:11434" });
+    expect(loadPlatformConfig({}).evidenceScoring).toEqual({ mode: "lexical" });
+  });
+
   it("treats empty optional values as unset", () => {
     expect(() => loadPlatformConfig({ OIDC_ISSUER: "", RAGFLOW_BASE_URL: "", MODEL_BASE_URL: " " })).not.toThrow();
   });

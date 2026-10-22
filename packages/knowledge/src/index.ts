@@ -2,6 +2,7 @@ export * from "./types.js";
 export * from "./service.js";
 export * from "./text.js";
 export * from "./versions.js";
+export * from "./semantic.js";
 export * from "./fixture/corpus.js";
 export * from "./fixture/adapter.js";
 export * from "./lexical.js";

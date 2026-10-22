@@ -10,7 +10,9 @@ import {
   loadSources,
   type ChunkLoader,
   LightRagKnowledgeAdapter,
+  OllamaEmbedder,
   PolicyEnforcingKnowledgeService,
+  SemanticScoringAdapter,
   RagflowKnowledgeAdapter,
   type KnowledgeAdapter,
 } from "@platform/knowledge";
@@ -48,6 +50,14 @@ export function contentStoreChunks(repos: Repositories): ChunkLoader {
 }
 
 export async function createKnowledgeAdapter(config: PlatformConfig, repos: Repositories): Promise<KnowledgeAdapter> {
+  const base = await createRetrievalAdapter(config, repos);
+  const s = config.evidenceScoring;
+  if (s.mode !== "semantic") return base;
+  // Backend-independent semantic evidence score over the backend's candidates (ADR 0010).
+  return new SemanticScoringAdapter(base, new OllamaEmbedder({ baseUrl: s.baseUrl, model: s.model, timeoutMs: s.timeoutMs }), { floor: s.floor, ceil: s.ceil });
+}
+
+async function createRetrievalAdapter(config: PlatformConfig, repos: Repositories): Promise<KnowledgeAdapter> {
   if (config.knowledge.provider === "ragflow") {
     const k = config.knowledge;
     return new RagflowKnowledgeAdapter({ baseUrl: k.baseUrl, apiKey: k.apiKey, datasetId: k.datasetId, timeoutMs: k.timeoutMs });

@@ -154,7 +154,14 @@ EVAL_BASE_URL=http://localhost:4000 EVAL_LABEL=lexical node scripts/eval-retriev
 EVAL_BASE_URL=https://localhost:8443 SMOKE_INSECURE_TLS=1 EVAL_LABEL=lightrag node scripts/eval-retrieval.mjs
 ```
 
-Reports are written to `docs/eval/`.
+Reports are written to `docs/eval/`. Use
+`EVAL_QUESTIONS=fixtures/eval/questions-hard.json` for the hard set
+(paraphrases, multi-document questions, near-misses).
+
+**Evidence score:** `EVIDENCE_SCORING=lexical` (default, query-term overlap)
+or `semantic`. Semantic scoring uses embedding similarity from local Ollama
+(`EMBEDDING_BASE_URL`, `nomic-embed-text`) and is calibrated with
+`scripts/calibrate-semantic.mjs` (ADR 0010, Decision 4).
 
 ## Quick start D — integrations: real local model, MCP and approvals
 

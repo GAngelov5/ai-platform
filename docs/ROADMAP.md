@@ -15,7 +15,7 @@ Last updated: 2026-10-22
 | Stage 1 · Integrations | Context router, capability registry, MCP client with pinned tools, approvals, outbox, reconciliation, SSE | ADR 0007, 0008 · `scripts/integration-live-check.mjs` |
 | UI · Forest design | Workspace with context panel, Inbox, account menu, Your connections | commit 51c3d73 · design canvas |
 | 3a · Source ingestion | `SourceAdapter` contract, generic pipeline, folder adapter with inherited ACLs, quarantine, content store, partitions per access set, scheduled ingest → sync | ADR 0009 · 98 tests · `scripts/lightrag-live-check.mjs` (23/23, 2026-10-22) |
-| 3b · Knowledge selection gate *(retrieval part)* | PDF/DOCX parsing in an isolated worker thread, 110-file synthetic corpus, 34 labeled questions, HTTP eval harness, platform-side version handling | ADR 0010 · `docs/eval/` (lexical + LightRAG) · 105 tests |
+| 3b · Knowledge selection gate *(retrieval part)* | PDF/DOCX parsing in an isolated worker thread, 110-file synthetic corpus, 34 labeled questions, HTTP eval harness (base + hard sets), platform-side version handling, optional semantic evidence score | ADR 0010 · `docs/eval/` (lexical + LightRAG) · 113 tests |
 
 ## Next
 
@@ -26,9 +26,11 @@ Last updated: 2026-10-22
    - SharePoint source adapter (Graph delta queries), on the ADR 0009 pipeline.
    - Personal-account connect flow behind "Your connections".
 2. **Stage 3b, rest**
-   - **Harder question set:** paraphrases, synonyms, two-document questions,
-     more near-misses. The current set scores 100% on all three backends, so
-     it cannot choose between them.
+   - **Evidence score:** semantic scoring (`EVIDENCE_SCORING=semantic`) cut
+     wrong refusals on the hard set from 64.7% to 0% with LightRAG. But the
+     platform then no longer refuses off-topic questions; the model must.
+     Next: try a cross-encoder re-ranker, and decide the default after the
+     answer-level gate (ADR 0010, Decision 4).
    - **Answer-level gate:** citation support ≥ 95% and model-level abstention.
      This needs real model answers, and waits for the model and hardware
      decision below.
@@ -53,6 +55,15 @@ Last updated: 2026-10-22
     `supersededBy`. Now 100%.
   - Families are computed only over documents the user can read, so an
     unreadable v2 is never revealed.
+- **Semantic evidence score** (Ollama `nomic-embed-text`, calibrated):
+  false abstention on the hard set dropped from 64.7% to 0% (LightRAG). No
+  cosine threshold refuses near-misses: they score *higher* than real
+  answers. Off-topic questions score 0.65–0.73. The threshold is calibrated
+  for no wrong refusals, and abstention is left to the model.
+- **Hard question set** (paraphrases, multi-document, near-misses): no
+  backend passes. LightRAG with lexical re-ranking is best at 70.6% recall;
+  lexical is 52.9%. Alias questions ("the HR self-service launch" for Ember)
+  fail on every backend.
 - **LightRAG results** (eval overlay, 105 documents indexed): 100% recall,
   100% current-version-first, 0 leaks, 80% abstention (q29). Native LightRAG
   ranking (`LIGHTRAG_RANKING=native`) and lexical re-ranking score the same.
