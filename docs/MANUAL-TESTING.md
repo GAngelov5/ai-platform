@@ -62,7 +62,7 @@ SMOKE_BASE_URL=https://localhost:8443 SMOKE_INSECURE_TLS=1 pnpm smoke
 | 1.1 | Open https://localhost:8443 without signing in | Sign-in screen; no data. |
 | 1.2 | `curl -sk https://localhost:8443/api/conversations -H 'x-principal-id: carol'` | `401`. Identity headers are ignored. |
 | 1.3 | Sign in as Alice, then sign out from the account menu | Back to sign-in. The old session cookie no longer works (revoked on the server). |
-| 1.4 | `curl -sk https://localhost:8443/api/ready` | `{"status":"ready", ...}` with database, knowledge (all three LightRAG partitions) and model checks. |
+| 1.4 | `curl -sk https://localhost:8443/api/ready` | `{"status":"ready", ...}` with database, knowledge (all three LightRAG partitions) and `model: qwen3:4b`. The model is actually probed: `$C stop ollama` makes readiness `503 not_ready` until you `$C start ollama`. |
 
 ## 2. Knowledge answers with citations and abstention (Stage 1 · knowledge slice)
 
@@ -77,6 +77,8 @@ answer takes **2–6 minutes on CPU**; the run status shows progress.
 | 2.4 | Carol | "What does the contract dispute memo say?" | Answer from the restricted memo, cited. |
 | 2.5 | Alice | Open the memo's URL from step 2.4 (`/documents/<id>`) | "Not found". The same answer as for a document that doesn't exist. |
 | 2.6 | Alice | Open a citation link that Carol received | "Not found": citations resolve only for the user they were issued to. |
+| 2.7 | Alice | Ask a question, then **reload the page** while it is running | The conversation shows "Still answering your last question", and the answer appears when it finishes. The run is not lost. |
+| 2.8 | Alice | Ask a question and click **Cancel** | The run stops on the server, and the answer is marked as stopped. Asking a second question while one is running in the same conversation is refused. |
 
 ## 3. LightRAG: permission changes and deletion (Stage 2a)
 
@@ -198,6 +200,8 @@ In **Inbox → Scheduled checks**:
 | 9.6 | Bob | Try to add a check | "You don't have access to the tracker for this check." |
 | 9.7 | — | Restart the worker during a run: `$C restart worker` right after **Run now** | The run finishes after the restart (a stale run is taken over after 10 minutes), without a duplicate proposal. |
 | 9.8 | Alice | **Pause** the check, wait more than an hour | No runs while paused. **Resume** or **Run now** starts it again. |
+| 9.9 | Alice | Look at a check's proposal in the Inbox | It expires after **72 hours** (chat proposals: 30 minutes). If it expires unanswered, the next run raises it again, once. A **rejected** one is never raised again for the same change. |
+| 9.10 | Alice | Approve a check's comment, then **Run now** | No new proposal: the posted comment changes the task, but not its status. |
 
 Restore the tracker task afterwards (same command as 9.3, with `"status":"In progress"`).
 

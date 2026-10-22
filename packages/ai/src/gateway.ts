@@ -50,6 +50,8 @@ export class ModelGatewayError extends Error {
 export interface ModelGateway {
   readonly descriptor: { provider: string; name: string };
   generate(req: GenerateRequest): Promise<GenerateResult>;
+  /** Cheap reachability probe for readiness (must not run a generation). */
+  health?(): Promise<{ ok: boolean; detail?: string }>;
 }
 
 export function normalizeModelError(err: unknown, signal?: AbortSignal): ModelGatewayError {

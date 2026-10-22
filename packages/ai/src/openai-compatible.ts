@@ -10,6 +10,8 @@ export interface OpenAICompatibleOptions {
   mode: ModelMode;
   approvedEndpoints: readonly string[];
   timeoutMs: number;
+  /** Test hook. */
+  fetch?: typeof fetch;
 }
 
 /**
@@ -26,6 +28,22 @@ export class OpenAICompatibleGateway implements ModelGateway {
     assertApprovedEndpoint(o.baseUrl, o.approvedEndpoints, o.mode, "model endpoint");
     this.descriptor = { provider: `openai-compatible:${new URL(o.baseUrl).host}`, name: o.modelName };
     this.provider = createOpenAICompatible({ name: "platform-model", baseURL: o.baseUrl, apiKey: o.apiKey });
+  }
+
+  /** Lists the server's models (`GET /models`) and checks the configured one is served. No generation. */
+  async health(): Promise<{ ok: boolean; detail?: string }> {
+    try {
+      const res = await (this.o.fetch ?? fetch)(`${this.o.baseUrl.replace(/\/$/, "")}/models`, {
+        headers: this.o.apiKey ? { authorization: `Bearer ${this.o.apiKey}` } : {},
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) return { ok: false, detail: `${this.descriptor.provider}: HTTP ${res.status}` };
+      const ids = (((await res.json()) as { data?: { id?: string }[] }).data ?? []).map((m) => m.id);
+      if (!ids.includes(this.o.modelName)) return { ok: false, detail: `${this.descriptor.provider}: model ${this.o.modelName} not available` };
+      return { ok: true, detail: `${this.descriptor.provider}: ${this.o.modelName}` };
+    } catch (err) {
+      return { ok: false, detail: `${this.descriptor.provider}: ${(err as Error).name === "TimeoutError" ? "timeout" : "unreachable"}` };
+    }
   }
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {

@@ -40,6 +40,23 @@ async function enqueue(db: Pick<Database, "insert">, type: string, aggregateId: 
     .onConflictDoUpdate({ target: [outboxEvents.type, outboxEvents.aggregateId], set: { processedAt: null, availableAt: now, lastError: null } });
 }
 
+export interface ProposeInput {
+  capabilityId: string;
+  input: Record<string, unknown>;
+  conversationId?: string;
+  runId?: string;
+  dedupeKey?: string;
+  ttlMs?: number;
+}
+
+const isUniqueViolation = (err: unknown): boolean => {
+  const e = err as { code?: string; cause?: { code?: string } };
+  return e?.code === "23505" || e?.cause?.code === "23505";
+};
+
+/** Upper bound for a proposal's lifetime, whatever the caller asks for. */
+const MAX_TTL_MS = 7 * 24 * 60 * 60_000;
+
 export type ExecutionOutcome = "succeeded" | "failed" | "unknown" | "expired" | "skipped" | "reconciled";
 
 /**
@@ -122,13 +139,24 @@ export class ActionService {
 
   /**
    * Called by the agent runtime (and workflows) for write capabilities. Never
-   * executes anything. With `dedupeKey`, proposing the same logical write again
-   * (a retried or redelivered workflow run) returns the existing proposal.
+   * executes anything.
+   *
+   * With `dedupeKey`, proposing the same logical write again (a retried,
+   * redelivered or later workflow run) returns the existing proposal while it
+   * can still be decided, and also after the user rejected or approved it. A
+   * proposal that can no longer be approved (expired, or made under an older
+   * policy version) is retired and replaced, so the change is raised again
+   * instead of being lost.
+   *
+   * `ttlMs` overrides the default lifetime (bounded to 7 days), e.g. for
+   * proposals made while nobody is at the screen.
    */
-  async propose(
-    ctx: TrustedContext,
-    input: { capabilityId: string; input: Record<string, unknown>; conversationId?: string; runId?: string; dedupeKey?: string },
-  ): Promise<ActionProposalView> {
+  async propose(ctx: TrustedContext, input: ProposeInput): Promise<ActionProposalView> {
+    return (await this.proposeOnce(ctx, input)).proposal;
+  }
+
+  /** Like `propose`, and also says whether this call created the proposal (false: an existing one was returned). */
+  async proposeOnce(ctx: TrustedContext, input: ProposeInput): Promise<{ proposal: ActionProposalView; created: boolean }> {
     const cap = this.d.capabilities.get(input.capabilityId);
     if (!cap?.write || cap.definition.kind !== "write") throw new NotFoundOrForbiddenError("unknown write capability");
     const principal = await this.d.principals.get(ctx.customerId, ctx.principalId);
@@ -146,7 +174,7 @@ export class ActionService {
       tool: cap.write.tool,
       payload,
       policyVersion: ctx.policyVersion,
-      expiresAt: new Date(this.now().getTime() + this.ttlMs),
+      expiresAt: new Date(this.now().getTime() + Math.min(Math.max(input.ttlMs ?? this.ttlMs, 60_000), MAX_TTL_MS)),
     };
     const values = {
       ...base,
@@ -160,21 +188,45 @@ export class ActionService {
       dedupeKey: input.dedupeKey ?? null,
       state: "pending_approval" as const,
     };
-    const [row] = input.dedupeKey
-      ? await this.d.db
-          .insert(actionProposals)
-          .values(values)
-          .onConflictDoNothing({ target: [actionProposals.customerId, actionProposals.dedupeKey] })
-          .returning()
-      : await this.d.db.insert(actionProposals).values(values).returning();
-    if (!row) {
-      const [existing] = await this.d.db
-        .select()
-        .from(actionProposals)
-        .where(and(eq(actionProposals.customerId, ctx.customerId), eq(actionProposals.dedupeKey, input.dedupeKey!)));
-      if (!existing || existing.principalId !== ctx.principalId) throw new NotFoundOrForbiddenError();
-      return ActionService.view(existing);
+    const dedupe = (key: string) =>
+      this.d.db.transaction(async (tx) => {
+        const [existing] = await tx
+          .select()
+          .from(actionProposals)
+          .where(and(eq(actionProposals.customerId, ctx.customerId), eq(actionProposals.dedupeKey, key)))
+          .for("update");
+        if (existing) {
+          if (existing.principalId !== ctx.principalId) throw new NotFoundOrForbiddenError();
+          const stale =
+            existing.state === "expired" ||
+            (existing.state === "pending_approval" && (this.now() >= existing.expiresAt || existing.policyVersion !== ctx.policyVersion));
+          if (!stale) return { row: existing, created: false };
+          // Retire the old proposal (kept for history under a derived key) and raise the change again.
+          await tx
+            .update(actionProposals)
+            .set({
+              dedupeKey: `${key}#retired:${existing.id}`,
+              ...(existing.state === "pending_approval" ? { state: "expired" as const, decidedAt: this.now() } : {}),
+              updatedAt: this.now(),
+            })
+            .where(eq(actionProposals.id, existing.id));
+        }
+        const [inserted] = await tx.insert(actionProposals).values(values).returning();
+        return { row: inserted!, created: true, replaced: existing?.id };
+      });
+    let result: { row: ProposalRow; created: boolean; replaced?: string };
+    if (!input.dedupeKey) result = { row: (await this.d.db.insert(actionProposals).values(values).returning())[0]!, created: true };
+    else {
+      try {
+        result = await dedupe(input.dedupeKey);
+      } catch (err) {
+        // A concurrent first proposal with the same key won the insert: return that one.
+        if (!isUniqueViolation(err)) throw err;
+        result = await dedupe(input.dedupeKey);
+      }
     }
+    if (!result.created) return { proposal: ActionService.view(result.row), created: false };
+    const row = result.row;
     await this.d.audit.write({
       customerId: ctx.customerId,
       principalId: ctx.principalId,
@@ -183,9 +235,9 @@ export class ActionService {
       resourceType: "action",
       resourceId: row!.id,
       outcome: "ok",
-      detail: { capabilityId: cap.definition.id, runId: input.runId ?? null },
+      detail: { capabilityId: cap.definition.id, runId: input.runId ?? null, ...(result.replaced ? { replaces: result.replaced } : {}) },
     });
-    return ActionService.view(row!);
+    return { proposal: ActionService.view(row!), created: true };
   }
 
   async get(ctx: TrustedContext, id: string): Promise<ActionProposalView> {

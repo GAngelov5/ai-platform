@@ -134,6 +134,8 @@ export type ConversationSummary = z.infer<typeof ConversationSummarySchema>;
 
 export const ConversationDetailSchema = ConversationSummarySchema.extend({
   messages: z.array(MessageSchema),
+  /** An answer is still being produced (e.g. after a page reload); poll until false. */
+  runInProgress: z.boolean(),
 });
 export type ConversationDetail = z.infer<typeof ConversationDetailSchema>;
 

@@ -20,7 +20,7 @@ const CANARY = "FORBIDDEN-CANARY-7Q4X";
 const FIXTURES_ROOT = fileURLToPath(new URL("../../../fixtures", import.meta.url));
 
 class Client {
-  private cookies = new Map<string, string>();
+  readonly cookies = new Map<string, string>();
   constructor(private readonly base: string) {}
 
   async req(method: string, path: string, body?: unknown, extraHeaders: Record<string, string> = {}, opts: { csrf?: boolean } = {}) {
@@ -383,6 +383,74 @@ describe("ingested folder source (team-share)", () => {
     const r = await alice.req("GET", "/api/knowledge/documents/team-share:atlas_cutover-runbook.html");
     expect(r.status).toBe(200);
     expect(r.json.chunks.map((c: { location?: string }) => c.location)).toEqual(expect.arrayContaining(["Before cutover", "Cutover night"]));
+  });
+});
+
+describe("runs are owned by the server, not the HTTP request", () => {
+  /** Makes the fake model slow (abortable), like a real CPU model. */
+  const slowModel = (ms: number) => {
+    const original = model.generate.bind(model);
+    model.generate = async (req) => {
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(resolve, ms);
+        req.signal?.addEventListener("abort", () => (clearTimeout(t), reject(req.signal!.reason)), { once: true });
+      });
+      return original(req);
+    };
+    return () => (model.generate = original);
+  };
+  const conversation = async (c: Client) => (await c.req("POST", "/api/conversations", { agentId: "project-assistant" })).json.id as string;
+  const waitIdle = async (c: Client, id: string) => {
+    for (let i = 0; i < 50; i++) {
+      const d = await c.req("GET", `/api/conversations/${id}`);
+      if (!d.json.runInProgress) return d.json;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error("run did not finish");
+  };
+
+  it("a client that disconnects from the stream still gets its answer stored", async () => {
+    const restore = slowModel(800);
+    try {
+      const alice = await as("alice");
+      const id = await conversation(alice);
+      const ac = new AbortController();
+      const streaming = fetch(`${base}/api/conversations/${id}/messages/stream`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: [...alice.cookies].map(([k, v]) => `${k}=${v}`).join("; "), "x-csrf-token": alice.cookies.get("platform_csrf")! },
+        body: JSON.stringify({ content: "Why was Project Atlas delayed?" }),
+        signal: ac.signal,
+      }).catch(() => undefined);
+      await new Promise((r) => setTimeout(r, 200));
+      ac.abort(); // the user closes the tab
+      await streaming;
+      expect((await alice.req("GET", `/api/conversations/${id}`)).json.runInProgress).toBe(true);
+      const done = await waitIdle(alice, id);
+      expect(done.messages.at(-1)).toMatchObject({ role: "assistant", status: "answered" });
+    } finally {
+      restore();
+    }
+  });
+
+  it("allows one question at a time per conversation, and cancel stops the run", async () => {
+    const restore = slowModel(5000);
+    try {
+      const alice = await as("alice");
+      const bob = await as("bob");
+      const id = await conversation(alice);
+      const first = alice.req("POST", `/api/conversations/${id}/messages`, { content: "Why was Project Atlas delayed?" });
+      await new Promise((r) => setTimeout(r, 200));
+      expect((await alice.req("POST", `/api/conversations/${id}/messages`, { content: "And now?" })).status).toBe(409);
+      expect((await bob.req("POST", `/api/conversations/${id}/cancel`)).status).toBe(404); // only the owner
+      expect((await alice.req("POST", `/api/conversations/${id}/cancel`, undefined, {}, { csrf: false })).status).toBe(403);
+      expect((await alice.req("POST", `/api/conversations/${id}/cancel`)).json).toEqual({ cancelled: true });
+      const r = await first;
+      expect(r.json.assistantMessage.status).not.toBe("answered");
+      expect((await waitIdle(alice, id)).runInProgress).toBe(false);
+      expect((await alice.req("POST", `/api/conversations/${id}/cancel`)).json).toEqual({ cancelled: false });
+    } finally {
+      restore();
+    }
   });
 });
 

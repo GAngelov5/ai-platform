@@ -61,9 +61,19 @@ execute(run)   ── conditional claim ──▶    pending → running (attemp
   minutes) is taken over. Only the current attempt may record the result.
 - **Writes are proposals only.** A workflow proposes through `ActionService`
   with a **dedupe key**. For the status check, the key is
-  `wf:<workflow>:<task>:<status>:<updatedAt>`. A retried run, a taken-over
-  run, or a later run seeing the same state returns the existing proposal.
-  So each logical write gets exactly one approval.
+  `wf:<workflow>:<task>:<status>:<since>`, where `since` is when the
+  workflow first saw that status. The task's update time is deliberately not
+  part of the key, because posting the approved comment changes it.
+  - **While a proposal can be decided, or after it was approved or
+    rejected,** asking again returns it, so each logical write gets exactly
+    one approval. A rejection is final.
+  - **A proposal that can no longer be approved** (expired, or made under an
+    older policy version) is retired, keeping its history under a derived
+    key, and the change is raised again once. Otherwise it would be lost
+    silently.
+  - **Lifetime:** workflow proposals live 72 hours, because scheduled runs
+    happen while nobody is watching. Chat proposals keep 30 minutes, and
+    every lifetime is capped at 7 days.
 - **Current permissions.** Each run loads the owner again and re-checks the
   kind's capabilities against the owner's *current* groups. Revoked access
   makes the run fail as `forbidden`, with no reads and no proposals. Creating

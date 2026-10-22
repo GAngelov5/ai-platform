@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post, Req, Res } from "@nestjs/common";
+import { Body, ConflictException, Controller, Get, HttpCode, Inject, Param, Post, Res } from "@nestjs/common";
 import type { Response } from "express";
 import {
   CreateConversationRequestSchema,
@@ -11,7 +11,6 @@ import {
   type PostMessageResponse,
   type RunEvent,
 } from "@platform/contracts";
-import type { PlatformRequest } from "../auth/http.js";
 import type { schema } from "@platform/database";
 import { NotFoundOrForbiddenError, type TrustedContext } from "@platform/security";
 import { Ctx } from "../auth/decorators.js";
@@ -45,6 +44,9 @@ const toMessage = (m: MessageRow): Message => ({
 
 @Controller()
 export class ConversationsController {
+  /** Conversation id → its in-flight run (per API process). */
+  private readonly inflight = new Map<string, AbortController>();
+
   constructor(@Inject(DEPS) private readonly deps: PlatformDeps) {}
 
   @Get("agents")
@@ -95,18 +97,37 @@ export class ConversationsController {
   async get(@Ctx() ctx: TrustedContext, @Param("id") id: string): Promise<ConversationDetail> {
     const c = await this.owned(ctx, id);
     const rows = await this.deps.repos.messages.list(ctx.customerId, c.id);
-    return { ...summary(c), messages: await this.visibleMessages(ctx, rows) };
+    return { ...summary(c), messages: await this.visibleMessages(ctx, rows), runInProgress: this.inflight.has(c.id) };
   }
 
-  /** One agent turn, shared by the JSON and the streaming endpoints. */
-  private async turn(
-    ctx: TrustedContext,
-    id: string,
-    body: unknown,
-    opts: { signal?: AbortSignal; onEvent?: (e: RunEvent) => void } = {},
-  ): Promise<PostMessageResponse> {
+  /**
+   * One agent turn, shared by the JSON and the streaming endpoints. The run is
+   * owned by the server, not the HTTP request: a client that disconnects or
+   * reloads doesn't lose it (the answer is stored, and `runInProgress` tells the
+   * UI to wait). It ends with its own limits or an explicit cancel. One run at a
+   * time per conversation. In-flight runs are per API process; the Compose
+   * deployment runs one API instance.
+   */
+  private async turn(ctx: TrustedContext, id: string, body: unknown, opts: { onEvent?: (e: RunEvent) => void } = {}): Promise<PostMessageResponse> {
     const { content } = PostMessageRequestSchema.parse(body);
     const c = await this.owned(ctx, id);
+    if (this.inflight.has(c.id)) throw new ConflictException("Your previous question in this conversation is still being answered.");
+    const controller = new AbortController();
+    this.inflight.set(c.id, controller);
+    try {
+      return await this.runTurn(ctx, c, content, controller.signal, opts.onEvent);
+    } finally {
+      this.inflight.delete(c.id);
+    }
+  }
+
+  private async runTurn(
+    ctx: TrustedContext,
+    c: Awaited<ReturnType<ConversationsController["owned"]>>,
+    content: string,
+    signal: AbortSignal,
+    onEvent?: (e: RunEvent) => void,
+  ): Promise<PostMessageResponse> {
     const agent = this.deps.agents.get(c.agentId);
     if (!agent) throw new NotFoundOrForbiddenError();
     const { repos } = this.deps;
@@ -119,15 +140,15 @@ export class ConversationsController {
       .map((m) => ({ role: m.role, content: m.content.replace(/\[\[(ev|lv)_[A-Za-z0-9_-]+\]\]/g, "") }));
 
     const userRow = await repos.messages.add({ conversationId: c.id, customerId: ctx.customerId, role: "user", content });
-    opts.onEvent?.({ type: "run.started", runId: "pending", userMessage: toMessage(userRow) });
+    onEvent?.({ type: "run.started", runId: "pending", userMessage: toMessage(userRow) });
     const result = await this.deps.runtime.run(ctx, {
       agent,
       question: content,
       principalGroups: principal.groups,
       conversationId: c.id,
       history,
-      signal: opts.signal,
-      onEvent: (e) => opts.onEvent?.(e),
+      signal,
+      onEvent: (e) => onEvent?.(e),
     });
     const assistantRow = await repos.messages.add({
       conversationId: c.id,
@@ -168,19 +189,26 @@ export class ConversationsController {
     return this.turn(ctx, id, body);
   }
 
+  /** Stops this conversation's in-flight run (the stored answer says it was cancelled). */
+  @Post("conversations/:id/cancel")
+  @HttpCode(200)
+  async cancel(@Ctx() ctx: TrustedContext, @Param("id") id: string): Promise<{ cancelled: boolean }> {
+    const c = await this.owned(ctx, id);
+    const run = this.inflight.get(c.id);
+    run?.abort(new DOMException("cancelled by the user", "AbortError"));
+    return { cancelled: !!run };
+  }
+
   /**
    * Streams run progress as server-sent events (run.started, tool.*, message).
-   * Closing the connection cancels the run. The final message is validated
-   * (citations, proposals) before it is sent, exactly as in the JSON endpoint.
+   * Closing the connection only stops the stream: the run continues and its
+   * answer is stored (see `turn`). The final message is validated (citations,
+   * proposals) before it is sent, exactly as in the JSON endpoint.
    */
   @Post("conversations/:id/messages/stream")
-  async stream(@Ctx() ctx: TrustedContext, @Param("id") id: string, @Body() body: unknown, @Req() req: PlatformRequest, @Res() res: Response): Promise<void> {
+  async stream(@Ctx() ctx: TrustedContext, @Param("id") id: string, @Body() body: unknown, @Res() res: Response): Promise<void> {
     PostMessageRequestSchema.parse(body); // validate before opening the stream
     await this.owned(ctx, id);
-    const abort = new AbortController();
-    req.on("close", () => {
-      if (!res.writableEnded) abort.abort(new DOMException("client disconnected", "AbortError"));
-    });
     res.status(200);
     res.setHeader("content-type", "text/event-stream; charset=utf-8");
     res.setHeader("cache-control", "no-store");
@@ -191,11 +219,14 @@ export class ConversationsController {
     };
     const keepAlive = setInterval(() => !res.writableEnded && res.write(": keep-alive\n\n"), 15_000);
     try {
-      const r = await this.turn(ctx, id, body, { signal: abort.signal, onEvent: send });
+      const r = await this.turn(ctx, id, body, { onEvent: send });
       send({ type: "message", assistantMessage: r.assistantMessage });
     } catch (err) {
       this.deps.logger.error({ requestId: ctx.requestId, err: (err as Error).name }, "stream run failed");
-      send({ type: "error", message: "The assistant could not complete this request." });
+      send({
+        type: "error",
+        message: err instanceof ConflictException ? err.message : "The assistant could not complete this request.",
+      });
     } finally {
       clearInterval(keepAlive);
       res.end();

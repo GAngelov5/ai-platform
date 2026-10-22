@@ -47,6 +47,38 @@ Last updated: 2026-10-22
 
 ## Notes from the last stage (to check)
 
+**Production-readiness fixes (after Stage 3c review)**
+- **Workflow proposals no longer silently disappear.**
+  - They live 72 hours, where chat proposals live 30 minutes; the lifetime
+    is capped at 7 days.
+  - An expired or outdated proposal is retired and raised again, once. A
+    rejected one never is.
+  - Proposals are keyed on when the task *entered* a status, so approving
+    the comment doesn't trigger a new proposal.
+- **Answers survive a closed tab or a reload.**
+  - Runs belong to the server: closing the stream no longer cancels the run.
+  - Cancel is an explicit endpoint.
+  - Each conversation runs one question at a time.
+  - A reloaded page waits for the stored answer.
+  - Limit: an API restart still loses an in-flight run, and runs are per
+    process (one API instance in Compose).
+- **Readiness probes the model.** It calls `GET /models` and checks that the
+  configured model is served, instead of always reporting ok.
+- **The tracker test hook refuses to start** unless `APP_ENV` is
+  development or test.
+- **Live check after the fixes:**
+  - The workflow and permission checks pass (15/15).
+  - A real-model answer survived a client disconnect: the client left after
+    3 s, and the answer was stored 271 s later.
+  - The meeting briefings failed again, with the model reported as
+    `unavailable`: Ollama stopped responding on the 6-CPU VM. The routing
+    was correct (calendar, then tracker). This is still the model and
+    hardware decision.
+- **Correction:** I first blamed Alice's failed live briefing on a client
+  disconnect. The run actually ended with `unavailable`: two CPU runs
+  overlapped and Ollama stopped responding. The one-run-per-conversation
+  rule prevents the self-inflicted part of that.
+
 **Stage 3c**
 - **Live check (2026-10-22):** the workflow and permission checks all pass
   on the real stack (14/14). The worker ran a new check within 45 s, the

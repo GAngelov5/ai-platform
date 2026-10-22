@@ -85,6 +85,7 @@ export default function ChatPage() {
   const [acting, setActing] = useState<string>();
   const [error, setError] = useState<string>();
   const abort = useRef<AbortController | null>(null);
+  const [resuming, setResuming] = useState(false);
 
   const loadList = useCallback(async () => setConversations(await api<ConversationSummary[]>("/api/conversations")), []);
   const loadProposals = useCallback(async (messages: Message[]) => {
@@ -97,10 +98,23 @@ export default function ChatPage() {
   const open = useCallback(
     async (id: string) => {
       setError(undefined);
-      const conv = await api<ConversationDetail>(`/api/conversations/${id}`);
+      let conv = await api<ConversationDetail>(`/api/conversations/${id}`);
       setCurrent(conv);
       setSelected(undefined);
       window.history.replaceState(null, "", `/chat?c=${id}`);
+      // The answer to an earlier question is still being produced (e.g. after a reload): wait for it.
+      if (conv.runInProgress) {
+        setResuming(true);
+        try {
+          while (conv.runInProgress) {
+            await new Promise((r) => setTimeout(r, 4000));
+            conv = await api<ConversationDetail>(`/api/conversations/${id}`);
+          }
+          setCurrent(conv);
+        } finally {
+          setResuming(false);
+        }
+      }
       await loadProposals(conv.messages);
     },
     [loadProposals],
@@ -160,7 +174,7 @@ export default function ChatPage() {
       let conv = current;
       if (!conv) {
         const s = await api<ConversationSummary>("/api/conversations", { method: "POST", body: { agentId } });
-        conv = { ...s, messages: [] };
+        conv = { ...s, messages: [], runInProgress: false };
         setCurrent(conv);
         window.history.replaceState(null, "", `/chat?c=${s.id}`);
       }
@@ -198,6 +212,7 @@ export default function ChatPage() {
       await loadList();
     } catch (e) {
       setError((e as Error).name === "AbortError" ? "Cancelled. The run was stopped." : (e as Error).message);
+      if ((e as Error).name !== "AbortError" && current) void open(current.id).catch(() => {});
     } finally {
       setBusy(false);
       setLive([]);
@@ -288,6 +303,11 @@ export default function ChatPage() {
               <p className="text-[13.5px] text-muted">Checking documents and live systems…</p>
             </div>
           )}
+          {resuming && !busy && (
+            <div className="max-w-[760px] rounded-[16px] border border-dashed border-line-strong px-[22px] py-4" role="status">
+              <p className="text-[13.5px] text-muted">Still answering your last question. The answer will appear here.</p>
+            </div>
+          )}
 
           <form
             className="mt-auto flex max-w-[760px] gap-2"
@@ -305,11 +325,19 @@ export default function ChatPage() {
               maxLength={4000}
               onChange={(e) => setDraft(e.target.value)}
               placeholder="Ask about a project, or ask for a change"
-              disabled={busy}
+              disabled={busy || resuming}
               className="min-h-[46px] flex-1 rounded-xl border border-line-strong bg-surface px-3.5 text-ink placeholder:text-muted"
             />
             {busy ? (
-              <button type="button" onClick={() => abort.current?.abort()} className="min-h-[46px] cursor-pointer rounded-xl border border-line-strong bg-transparent px-5">
+              <button
+                type="button"
+                onClick={() => {
+                  // Closing the stream alone no longer stops the run: ask the server to cancel it.
+                  if (current) void api(`/api/conversations/${current.id}/cancel`, { method: "POST" }).catch(() => {});
+                  abort.current?.abort();
+                }}
+                className="min-h-[46px] cursor-pointer rounded-xl border border-line-strong bg-transparent px-5"
+              >
                 Cancel
               </button>
             ) : (

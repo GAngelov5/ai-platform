@@ -161,3 +161,72 @@ describe("ActionService", () => {
     await expect(svc.approve(ctx("alice"), p.id, p.payloadHash)).rejects.toBeInstanceOf(ActionConflictError);
   });
 });
+
+describe("deduplicated proposals (automated proposers)", () => {
+  let clock: Date;
+  const make = () => service(fastUrl, { now: () => clock }).svc;
+  const once = (svc: ActionService, key: string, extra: { ttlMs?: number; policyVersion?: string } = {}) =>
+    svc.proposeOnce(ctx("alice", extra.policyVersion), {
+      capabilityId: "tracker.task.comment",
+      input: { taskKey: "ATLAS-180", text: "Status check" },
+      dedupeKey: key,
+      ttlMs: extra.ttlMs,
+    });
+  const rows = (key: string) => db.select().from(schema.actionProposals).then((r) => r.filter((x) => x.dedupeKey?.startsWith(key)));
+  beforeEach(() => {
+    clock = new Date("2026-10-22T08:00:00Z");
+  });
+
+  it("returns the same proposal while it can be decided", async () => {
+    const svc = make();
+    const a = await once(svc, "k-same");
+    const b = await once(svc, "k-same");
+    expect(a.created).toBe(true);
+    expect(b).toMatchObject({ created: false, proposal: { id: a.proposal.id } });
+  });
+
+  it("replaces a proposal that expired unanswered, keeping the old one as history", async () => {
+    const svc = make();
+    const a = await once(svc, "k-exp", { ttlMs: 60 * 60_000 });
+    clock = new Date(clock.getTime() + 61 * 60_000);
+    const b = await once(svc, "k-exp");
+    expect(b.created).toBe(true);
+    expect(b.proposal.id).not.toBe(a.proposal.id);
+    const all = await rows("k-exp");
+    expect(all.find((r) => r.id === a.proposal.id)).toMatchObject({ state: "expired", dedupeKey: `k-exp#retired:${a.proposal.id}` });
+    expect(all.filter((r) => r.state === "pending_approval")).toHaveLength(1);
+  });
+
+  it("replaces a proposal made under an older policy version (it could no longer be approved)", async () => {
+    const svc = make();
+    const a = await once(svc, "k-pol");
+    const b = await once(svc, "k-pol", { policyVersion: "p2" });
+    expect(b.created).toBe(true);
+    expect(b.proposal.id).not.toBe(a.proposal.id);
+  });
+
+  it("never re-raises a proposal the user rejected or approved", async () => {
+    const svc = make();
+    const a = await once(svc, "k-rej");
+    await svc.reject(ctx("alice"), a.proposal.id);
+    clock = new Date(clock.getTime() + 8 * 24 * 60 * 60_000);
+    expect(await once(svc, "k-rej")).toMatchObject({ created: false, proposal: { id: a.proposal.id, state: "rejected" } });
+
+    const c = await once(svc, "k-app");
+    await svc.approve(ctx("alice"), c.proposal.id, c.proposal.payloadHash);
+    expect(await once(svc, "k-app")).toMatchObject({ created: false, proposal: { id: c.proposal.id } });
+  });
+
+  it("concurrent first proposals with one key create exactly one", async () => {
+    const svc = make();
+    const r = await Promise.all([once(svc, "k-race"), once(svc, "k-race"), once(svc, "k-race")]);
+    expect(new Set(r.map((x) => x.proposal.id)).size).toBe(1);
+    expect(r.filter((x) => x.created)).toHaveLength(1);
+  });
+
+  it("bounds the requested lifetime to 7 days", async () => {
+    const svc = make();
+    const a = await once(svc, "k-ttl", { ttlMs: 30 * 24 * 60 * 60_000 });
+    expect(new Date(a.proposal.expiresAt).getTime() - clock.getTime()).toBe(7 * 24 * 60 * 60_000);
+  });
+});

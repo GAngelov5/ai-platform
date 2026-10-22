@@ -35,6 +35,7 @@ services:
       CALENDAR_TOKEN: ${MCP_TOKEN_CALENDAR:?set MCP_TOKEN_CALENDAR}
       # Synthetic test hook for manual testing: POST /test/tasks/<KEY>/status (docs/MANUAL-TESTING.md).
       TRACKER_TEST_HOOKS: "1"
+      APP_ENV: development # the service refuses test hooks in any other environment
     volumes: [tracker-data:/data]
     networks: [tools]
     restart: unless-stopped

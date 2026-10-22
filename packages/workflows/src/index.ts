@@ -22,8 +22,14 @@ export interface WorkflowRunContext {
   /** Result of the last successful run, for change detection. */
   previous: Record<string, unknown> | undefined;
   read(capabilityId: string, input: Record<string, unknown>): Promise<LiveReadResult[]>;
-  /** Creates (at most once per dedupeKey) a proposal the owner must approve. Never executes. */
-  propose(capabilityId: string, input: Record<string, unknown>, dedupeKey: string): Promise<{ id: string; state: string }>;
+  /**
+   * Proposes a write the owner must approve. Never executes. Idempotent per
+   * dedupeKey: `created` is false when an approvable, approved or rejected
+   * proposal already exists; an expired one is replaced (ActionService).
+   */
+  propose(capabilityId: string, input: Record<string, unknown>, dedupeKey: string): Promise<{ id: string; state: string; created: boolean }>;
+  /** When this run was scheduled for (stable across retries). */
+  scheduledFor: Date;
   signal: AbortSignal;
 }
 
@@ -35,19 +41,25 @@ export interface WorkflowKind {
   config: z.ZodType<Record<string, unknown>>;
   /** Capabilities the owner must hold when creating the workflow and on every run. */
   capabilities: readonly string[];
+  /** Lifetime of this kind's proposals; scheduled runs happen while nobody is watching. Default 72 h. */
+  proposalTtlMs?: number;
   /** Human-readable title for one configured workflow. */
   label(config: Record<string, unknown>): string;
   run(ctx: WorkflowRunContext): Promise<Record<string, unknown>>;
 }
 
-type TaskSnapshot = Record<string, { status: string; updatedAt: string; title: string }>;
+/** `since`: when this workflow first saw the task in its current status (stable across comments and edits). */
+type TaskSnapshot = Record<string, { status: string; since: string; updatedAt: string; title: string }>;
 
 /**
- * Checks a tracker project on a schedule. When a task newly enters a watched
- * status (by default Blocked or At risk), it proposes ONE comment asking for an
- * update; the owner approves it like any other write. The dedupe key includes
- * the task's status and update time, so retries and later runs never propose
- * the same comment twice.
+ * Checks a tracker project on a schedule. For each task in a watched status
+ * (by default Blocked or At risk) it proposes ONE comment asking for an update;
+ * the owner approves it like any other write.
+ *
+ * The dedupe key is task + status + when the workflow first saw that status,
+ * so retries, later runs and the comment itself (which changes the task's
+ * update time) never produce a second proposal. If the proposal expired
+ * unanswered, the next run raises it again; a rejected one is not repeated.
  */
 export const trackerStatusCheck: WorkflowKind = {
   kind: "tracker-status-check",
@@ -63,22 +75,25 @@ export const trackerStatusCheck: WorkflowKind = {
   async run(ctx) {
     const config = trackerStatusCheck.config.parse(ctx.config) as { project: string; watchStatuses: string[] };
     const tasks = await ctx.read("tracker.tasks.list", { project: config.project });
-    const snapshot: TaskSnapshot = {};
-    for (const t of tasks) {
-      const d = t.data as { status?: string; updatedAt?: string; title?: string };
-      snapshot[t.resourceId] = { status: String(d.status ?? "unknown"), updatedAt: String(d.updatedAt ?? ""), title: String(d.title ?? t.title) };
-    }
     const before = (ctx.previous?.snapshot ?? {}) as TaskSnapshot;
+    const snapshot: TaskSnapshot = {};
     const changes: { taskKey: string; from: string | null; to: string }[] = [];
     const proposals: { taskKey: string; proposalId: string }[] = [];
+    for (const t of tasks) {
+      const d = t.data as { status?: string; updatedAt?: string; title?: string };
+      const status = String(d.status ?? "unknown");
+      const prev = before[t.resourceId];
+      const since = prev?.status === status ? prev.since : ctx.scheduledFor.toISOString();
+      snapshot[t.resourceId] = { status, since, updatedAt: String(d.updatedAt ?? ""), title: String(d.title ?? t.title) };
+      if (prev?.status !== status) changes.push({ taskKey: t.resourceId, from: prev?.status ?? null, to: status });
+    }
     for (const [taskKey, now] of Object.entries(snapshot)) {
-      const was = before[taskKey]?.status ?? null;
-      if (was === now.status) continue;
-      changes.push({ taskKey, from: was, to: now.status });
       if (!config.watchStatuses.includes(now.status)) continue;
+      const was = changes.find((c) => c.taskKey === taskKey)?.from ?? null;
       const text = `Automated status check: ${taskKey} (${now.title}) is now "${now.status}"${was ? ` (was "${was}")` : ""}. Please add an update on the cause and the next step.`;
-      const p = await ctx.propose("tracker.task.comment", { taskKey, text }, `wf:${ctx.workflowId}:${taskKey}:${now.status}:${now.updatedAt}`);
-      proposals.push({ taskKey, proposalId: p.id });
+      // Every run asks; the dedupe key makes that a no-op unless the earlier proposal expired unanswered.
+      const p = await ctx.propose("tracker.task.comment", { taskKey, text }, `wf:${ctx.workflowId}:${taskKey}:${now.status}:${now.since}`);
+      if (p.created) proposals.push({ taskKey, proposalId: p.id });
     }
     return { project: config.project.toUpperCase(), checked: tasks.length, changes, proposals, snapshot };
   },
@@ -104,7 +119,7 @@ export class WorkflowKindRegistry {
 export interface WorkflowServiceDeps {
   db: Database;
   capabilities: CapabilityRegistry;
-  actions: Pick<ActionService, "propose">;
+  actions: Pick<ActionService, "proposeOnce">;
   principals: { get(customerId: string, principalId: string): Promise<PrincipalRecord | undefined> };
   audit: { write(e: AuditInput): Promise<void> };
   /** Must match the API's policy version, so proposals stay approvable. */
@@ -122,6 +137,9 @@ export class WorkflowForbiddenError extends Error {
 }
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
+
+/** Scheduled runs often happen overnight: their proposals wait three days for a decision. */
+const DEFAULT_PROPOSAL_TTL_MS = 72 * 60 * 60_000;
 
 /**
  * Durable scheduled workflows (ADR 0011).
@@ -337,6 +355,7 @@ export class WorkflowService {
         runId: run.id,
         config: w.config,
         previous: prev?.result ?? undefined,
+        scheduledFor: run.scheduledFor,
         signal,
         read: async (capabilityId, input) => {
           if (!kind.capabilities.includes(capabilityId)) throw new WorkflowForbiddenError(`capability not declared: ${capabilityId}`);
@@ -349,8 +368,8 @@ export class WorkflowService {
         },
         propose: async (capabilityId, input, dedupeKey) => {
           if (!kind.capabilities.includes(capabilityId)) throw new WorkflowForbiddenError(`capability not declared: ${capabilityId}`);
-          const p = await this.d.actions.propose(ctx, { capabilityId, input, runId: run.id, dedupeKey });
-          return { id: p.id, state: p.state };
+          const r = await this.d.actions.proposeOnce(ctx, { capabilityId, input, runId: run.id, dedupeKey, ttlMs: kind.proposalTtlMs ?? DEFAULT_PROPOSAL_TTL_MS });
+          return { id: r.proposal.id, state: r.proposal.state, created: r.created };
         },
       });
       await this.finish(run.id, run.attempts, "succeeded", result, null);

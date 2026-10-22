@@ -236,4 +236,24 @@ describe("OpenAICompatibleGateway endpoint policy", () => {
     ).toThrow(/local model mode/);
     expect(() => new OpenAICompatibleGateway({ baseUrl: "http://ollama:11434/v1", modelName: "m", mode: "local", approvedEndpoints: ["http://ollama:11434"], timeoutMs: 1000 })).not.toThrow();
   });
+
+  it("health probes the model list without generating, and requires the configured model", async () => {
+    const calls: string[] = [];
+    const gw = (reply: () => Response | Promise<Response>, modelName = "qwen3:4b") =>
+      new OpenAICompatibleGateway({
+        baseUrl: "http://ollama:11434/v1",
+        modelName,
+        apiKey: "k",
+        mode: "local",
+        approvedEndpoints: ["http://ollama:11434"],
+        timeoutMs: 1000,
+        fetch: (async (url: string, init?: RequestInit) => (calls.push(`${url} ${new Headers(init?.headers).get("authorization")}`), reply())) as unknown as typeof fetch,
+      });
+    const models = () => new Response(JSON.stringify({ data: [{ id: "qwen3:4b" }, { id: "nomic-embed-text" }] }), { status: 200 });
+    expect(await gw(models).health()).toMatchObject({ ok: true });
+    expect(calls[0]).toBe("http://ollama:11434/v1/models Bearer k");
+    expect(await gw(models, "llama3:70b").health()).toMatchObject({ ok: false, detail: expect.stringMatching(/not available/) });
+    expect(await gw(() => new Response("", { status: 502 })).health()).toMatchObject({ ok: false, detail: expect.stringMatching(/502/) });
+    expect(await gw(() => Promise.reject(new TypeError("fetch failed"))).health()).toMatchObject({ ok: false, detail: expect.stringMatching(/unreachable/) });
+  });
 });

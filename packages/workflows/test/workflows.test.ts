@@ -173,6 +173,39 @@ describe("WorkflowService", () => {
     expect(store.get("ATLAS-180")!.comments.filter((c) => c.idempotencyKey === idem)).toHaveLength(1);
   });
 
+  it("workflow proposals wait 72 hours; approving the comment does not trigger a new proposal", async () => {
+    const { workflows, actions } = world();
+    await workflows.create(ctx("alice"), { kind: "tracker-status-check", config: { project: "ATLAS" }, intervalMinutes: 60 });
+    await workflows.tick();
+    const [p] = await proposalsFor();
+    expect(p!.expiresAt.getTime() - clock.getTime()).toBe(72 * 60 * 60_000);
+    await actions.approve(ctx("alice"), p!.id, p!.payloadHash);
+    await actions.processOutbox(); // posting the comment changes the task's updatedAt
+    minutes(61);
+    await workflows.tick();
+    expect(await proposalsFor()).toHaveLength(1);
+  });
+
+  it("re-raises a change whose proposal expired unanswered, once; never one the owner rejected", async () => {
+    const { workflows, actions } = world();
+    await workflows.create(ctx("alice"), { kind: "tracker-status-check", config: { project: "ATLAS" }, intervalMinutes: 60 });
+    await workflows.tick();
+    minutes(73 * 60); // nobody answered for three days
+    await workflows.tick();
+    const after = await proposalsFor();
+    expect(after.filter((r) => r.state === "pending_approval")).toHaveLength(1);
+    expect(after.filter((r) => r.state === "expired")).toHaveLength(1);
+    minutes(61);
+    await workflows.tick();
+    expect(await proposalsFor()).toHaveLength(2); // still just the one replacement
+
+    const open = after.find((r) => r.state === "pending_approval")!;
+    await actions.reject(ctx("alice"), open.id);
+    minutes(80 * 60);
+    await workflows.tick();
+    expect(await proposalsFor()).toHaveLength(2); // a rejection is final
+  });
+
   it("does not back-fill missed slots after downtime, and paused workflows never run", async () => {
     const { workflows } = world();
     const w = await workflows.create(ctx("alice"), { kind: "tracker-status-check", config: { project: "ATLAS" }, intervalMinutes: 60 });

@@ -123,6 +123,27 @@ await alice.req("POST", `/api/workflows/${w.id}/pause`);
 setTaskStatus("ATLAS-171", "In progress");
 }
 
+// --- A real-model answer survives a client disconnect ---------------------------------
+if (process.env.WITH_MODEL === "1") {
+  const c = (await alice.req("POST", "/api/conversations", { agentId: "project-assistant" })).json;
+  const ac = new AbortController();
+  const headers = { "content-type": "application/json", cookie: [...alice.cookies].map(([k, v]) => `${k}=${v}`).join("; "), "x-csrf-token": alice.cookies.get("platform_csrf") };
+  const streaming = fetch(`${BASE}/api/conversations/${c.id}/messages/stream`, { method: "POST", headers, body: JSON.stringify({ content: "Why was Project Atlas delayed?" }), signal: ac.signal }).catch(() => undefined);
+  await sleep(3000);
+  ac.abort(); // the user closes the tab
+  await streaming;
+  check("run continues after the client disconnects", (await alice.req("GET", `/api/conversations/${c.id}`)).json?.runInProgress === true);
+  const t0 = Date.now();
+  let d;
+  while (Date.now() - t0 < 12 * 60_000) {
+    d = (await alice.req("GET", `/api/conversations/${c.id}`)).json;
+    if (!d?.runInProgress) break;
+    await sleep(10_000);
+  }
+  const last = d?.messages?.at(-1);
+  check("its answer is stored for when the user returns", last?.role === "assistant" && last?.status === "answered", `${Math.round((Date.now() - t0) / 1000)}s, ${last?.status}`);
+}
+
 // --- Meeting Preparation Assistant (real model) -------------------------------------
 if (process.env.WITH_MODEL === "1") {
   for (const [s, who, event, mustNot] of [

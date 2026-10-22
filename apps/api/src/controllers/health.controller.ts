@@ -33,7 +33,8 @@ export class HealthController {
     } catch {
       checks.knowledge = { ok: false, detail: "health check failed" };
     }
-    checks.model = { ok: true, detail: this.deps.model.descriptor.provider };
+    // A gateway without a probe (the deterministic fake) is always available.
+    checks.model = this.deps.model.health ? await this.deps.model.health().catch(() => ({ ok: false, detail: "health check failed" })) : { ok: true, detail: this.deps.model.descriptor.provider };
     for (const c of this.deps.connectors.list()) {
       // Integrations degrade gracefully: an unhealthy connector removes its tools from runs, so it does not fail readiness.
       const h = await Promise.race([c.health(), new Promise<{ ok: boolean; detail: string }>((r) => setTimeout(() => r({ ok: false, detail: "health timeout" }), 3000))]);

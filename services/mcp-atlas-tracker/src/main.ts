@@ -16,7 +16,12 @@ if (calendarToken !== undefined && calendarToken.length < 16) {
   process.exit(78);
 }
 const calendar = calendarToken ? { store: new CalendarStore(), token: calendarToken } : undefined;
+// The status-change hook lets anyone holding the tracker token rewrite live data: development and tests only.
 const testHooks = process.env.TRACKER_TEST_HOOKS === "1";
+if (testHooks && !["development", "test"].includes(process.env.APP_ENV ?? "")) {
+  console.error("TRACKER_TEST_HOOKS=1 requires APP_ENV=development or test");
+  process.exit(78);
+}
 createTrackerHttpServer({ store, token, calendar, testHooks }).listen(port, "0.0.0.0", () => {
   console.log(JSON.stringify({ level: "info", msg: "atlas-tracker MCP server listening", port, calendar: !!calendar, testHooks }));
 });
