@@ -249,8 +249,17 @@ export class AgentRuntime {
               return done(
                 "ok",
                 {
-                  evidence: evidence.map((e) => ({ id: e.evidenceId, title: neutralize(e.title), version: e.version, indexedAt: e.indexedAt, text: neutralize(e.excerpt) })),
-                  note: evidence.length ? "Dated, indexed documents." : "No authorized documents matched.",
+                  evidence: evidence.map((e) => ({
+                    id: e.evidenceId,
+                    title: neutralize(e.title),
+                    version: e.version,
+                    indexedAt: e.indexedAt,
+                    ...(e.supersededBy ? { superseded: true } : {}),
+                    text: neutralize(e.excerpt),
+                  })),
+                  note: evidence.length
+                    ? "Dated, indexed documents. Prefer current versions; items marked superseded have a newer version."
+                    : "No authorized documents matched.",
                 },
                 { resultCount: evidence.length },
               );

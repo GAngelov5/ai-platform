@@ -53,4 +53,4 @@ export const SourcesConfigSchema = z
   .array(SourceConfigSchema)
   .refine((a) => new Set(a.map((s) => s.id)).size === a.length, "duplicate source id");
 
-export type QuarantineReason = "unsupported_type" | "too_large" | "empty" | "parse_error" | "fetch_error";
+export type QuarantineReason = "unsupported_type" | "too_large" | "empty" | "parse_error" | "parse_timeout" | "needs_ocr" | "fetch_error";

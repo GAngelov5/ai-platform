@@ -1,0 +1,743 @@
+{
+  "summary": {
+    "label": "lexical",
+    "date": "2026-10-22T11:49:52.774Z",
+    "base": "http://localhost:4000",
+    "corpusFiles": 110,
+    "questions": 34,
+    "recallAt5": 100,
+    "abstentionProxy": 80,
+    "falseAbstentionProxy": 0,
+    "latestVersionRankedFirst": 100,
+    "unauthorizedResults": 0,
+    "latencyMs": {
+      "p50": 145,
+      "p95": 185,
+      "max": 207
+    },
+    "byCategory": {
+      "status": "6/6",
+      "decision": "4/4",
+      "spec": "3/3",
+      "conflicting-versions": "4/4",
+      "policy": "6/6",
+      "restricted": "3/3"
+    },
+    "retriedAfter503": []
+  },
+  "rows": [
+    {
+      "id": "q01",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "status",
+      "question": "What was the main blocker for Borealis in May 2026?",
+      "ms": 152,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 1,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_borealis_status-2026-05.docx",
+        "eval-corpus:projects_borealis_status-2026-06.pdf",
+        "eval-corpus:projects_borealis_status-2026-04.md",
+        "eval-corpus:projects_borealis_status-2026-07.md",
+        "eval-corpus:projects_borealis_status-2026-08.html"
+      ]
+    },
+    {
+      "id": "q02",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "status",
+      "question": "What was the main blocker for Cedar in June 2026?",
+      "ms": 145,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 1,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_cedar_status-2026-06.pdf",
+        "eval-corpus:projects_borealis_status-2026-06.pdf",
+        "eval-corpus:projects_dune_status-2026-06.pdf",
+        "eval-corpus:projects_ember_status-2026-06.pdf",
+        "eval-corpus:projects_cedar_status-2026-04.md"
+      ]
+    },
+    {
+      "id": "q03",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "status",
+      "question": "What was the main blocker for Dune in April 2026?",
+      "ms": 129,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 1,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_dune_status-2026-04.md",
+        "eval-corpus:projects_dune_status-2026-06.pdf",
+        "eval-corpus:projects_borealis_status-2026-04.md",
+        "eval-corpus:projects_cedar_status-2026-04.md",
+        "eval-corpus:projects_dune_status-2026-05.docx"
+      ]
+    },
+    {
+      "id": "q04",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "status",
+      "question": "What was the main blocker for Ember in July 2026?",
+      "ms": 126,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 1,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_ember_status-2026-07.md",
+        "eval-corpus:projects_ember_status-2026-06.pdf",
+        "eval-corpus:projects_borealis_status-2026-07.md",
+        "eval-corpus:projects_cedar_status-2026-07.md",
+        "eval-corpus:projects_dune_status-2026-07.md"
+      ]
+    },
+    {
+      "id": "q05",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "status",
+      "question": "What was the main blocker for Cedar in September 2026?",
+      "ms": 123,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 1,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_cedar_status-2026-09.docx",
+        "eval-corpus:projects_cedar_status-2026-06.pdf",
+        "eval-corpus:projects_borealis_status-2026-09.docx",
+        "eval-corpus:projects_cedar_status-2026-04.md",
+        "eval-corpus:projects_cedar_status-2026-05.docx"
+      ]
+    },
+    {
+      "id": "q06",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "status",
+      "question": "What was the main blocker for Dune in August 2026?",
+      "ms": 139,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 1,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_dune_status-2026-08.html",
+        "eval-corpus:projects_dune_status-2026-06.pdf",
+        "eval-corpus:projects_borealis_status-2026-08.html",
+        "eval-corpus:projects_cedar_status-2026-08.html",
+        "eval-corpus:projects_dune_status-2026-04.md"
+      ]
+    },
+    {
+      "id": "q07",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "decision",
+      "question": "What did the Borealis steering committee decide about data retention?",
+      "ms": 130,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.83,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_borealis_steering-minutes-1.docx",
+        "atlas-steering-2026-05-12",
+        "eval-corpus:projects_borealis_steering-minutes-1.docx",
+        "eval-corpus:projects_borealis_steering-minutes-2.docx",
+        "eval-corpus:projects_borealis_steering-minutes-2.docx"
+      ]
+    },
+    {
+      "id": "q08",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "decision",
+      "question": "What did the Cedar steering committee decide about release cadence?",
+      "ms": 160,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.83,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_cedar_steering-minutes-3.docx",
+        "eval-corpus:projects_cedar_steering-minutes-1.docx",
+        "eval-corpus:projects_cedar_steering-minutes-1.docx",
+        "eval-corpus:projects_cedar_steering-minutes-2.docx",
+        "eval-corpus:projects_cedar_steering-minutes-2.docx"
+      ]
+    },
+    {
+      "id": "q09",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "decision",
+      "question": "What did the Dune steering committee decide about pilot scope?",
+      "ms": 159,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.83,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_dune_steering-minutes-2.docx",
+        "eval-corpus:projects_dune_steering-minutes-1.docx",
+        "eval-corpus:projects_dune_steering-minutes-1.docx",
+        "eval-corpus:projects_dune_steering-minutes-2.docx",
+        "eval-corpus:projects_dune_steering-minutes-3.docx"
+      ]
+    },
+    {
+      "id": "q10",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "decision",
+      "question": "What did the Ember steering committee decide about mobile access?",
+      "ms": 183,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.83,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_ember_steering-minutes-3.docx",
+        "eval-corpus:projects_cedar_steering-minutes-3.docx",
+        "eval-corpus:projects_ember_steering-minutes-1.docx",
+        "eval-corpus:projects_ember_steering-minutes-1.docx",
+        "eval-corpus:projects_ember_steering-minutes-2.docx"
+      ]
+    },
+    {
+      "id": "q11",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "spec",
+      "question": "How does Cedar handle push notifications?",
+      "ms": 144,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.75,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_cedar_spec-push-notifications.pdf",
+        "eval-corpus:projects_cedar_status-2026-09.docx",
+        "eval-corpus:projects_cedar_status-2026-06.pdf",
+        "eval-corpus:projects_cedar_spec-maps.pdf",
+        "eval-corpus:projects_cedar_spec-offline-storage.pdf"
+      ]
+    },
+    {
+      "id": "q12",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "spec",
+      "question": "How does Dune handle network?",
+      "ms": 162,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.67,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_dune_spec-network.pdf",
+        "eval-corpus:projects_dune_status-2026-06.pdf",
+        "eval-corpus:projects_dune_spec-fleet-management.pdf",
+        "eval-corpus:projects_dune_spec-integration.pdf",
+        "eval-corpus:projects_dune_go-live-plan-v2.md"
+      ]
+    },
+    {
+      "id": "q13",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "spec",
+      "question": "How does Ember handle audit?",
+      "ms": 161,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.67,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_ember_spec-audit.pdf",
+        "eval-corpus:projects_ember_status-2026-06.pdf",
+        "eval-corpus:projects_ember_spec-identity.pdf",
+        "eval-corpus:projects_ember_spec-payroll.pdf",
+        "eval-corpus:projects_ember_go-live-plan-v2.md"
+      ]
+    },
+    {
+      "id": "q14",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "conflicting-versions",
+      "question": "What is the current planned go-live date for Borealis?",
+      "ms": 135,
+      "hit": true,
+      "versionOk": true,
+      "wouldAnswer": true,
+      "maxScore": 0.67,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_borealis_go-live-plan-v2.md",
+        "eval-corpus:projects_borealis_go-live-plan-v2.md",
+        "eval-corpus:projects_cedar_go-live-plan-v2.md",
+        "eval-corpus:projects_dune_go-live-plan-v2.md",
+        "eval-corpus:projects_ember_go-live-plan-v2.md"
+      ]
+    },
+    {
+      "id": "q15",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "conflicting-versions",
+      "question": "What is the current planned go-live date for Cedar?",
+      "ms": 155,
+      "hit": true,
+      "versionOk": true,
+      "wouldAnswer": true,
+      "maxScore": 0.67,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_cedar_go-live-plan-v2.md",
+        "eval-corpus:projects_cedar_go-live-plan-v2.md",
+        "eval-corpus:projects_borealis_go-live-plan-v2.md",
+        "eval-corpus:projects_dune_go-live-plan-v2.md",
+        "eval-corpus:projects_ember_go-live-plan-v2.md"
+      ]
+    },
+    {
+      "id": "q16",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "conflicting-versions",
+      "question": "What is the current planned go-live date for Dune?",
+      "ms": 160,
+      "hit": true,
+      "versionOk": true,
+      "wouldAnswer": true,
+      "maxScore": 0.67,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_dune_go-live-plan-v2.md",
+        "eval-corpus:projects_dune_go-live-plan-v2.md",
+        "eval-corpus:projects_borealis_go-live-plan-v2.md",
+        "eval-corpus:projects_cedar_go-live-plan-v2.md",
+        "eval-corpus:projects_ember_go-live-plan-v2.md"
+      ]
+    },
+    {
+      "id": "q17",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "conflicting-versions",
+      "question": "What is the current planned go-live date for Ember?",
+      "ms": 153,
+      "hit": true,
+      "versionOk": true,
+      "wouldAnswer": true,
+      "maxScore": 0.67,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_ember_go-live-plan-v2.md",
+        "eval-corpus:projects_ember_go-live-plan-v2.md",
+        "eval-corpus:projects_borealis_go-live-plan-v2.md",
+        "eval-corpus:projects_cedar_go-live-plan-v2.md",
+        "eval-corpus:projects_dune_go-live-plan-v2.md"
+      ]
+    },
+    {
+      "id": "q18",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "policy",
+      "question": "What is the daily per diem for business travel within the EU?",
+      "ms": 146,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 1,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_travel-policy.md",
+        "eval-corpus:policies_mobile-phone-policy.md",
+        "eval-corpus:policies_travel-policy.md",
+        "eval-corpus:policies_expense-policy.html",
+        "eval-corpus:policies_incident-reporting.pdf"
+      ]
+    },
+    {
+      "id": "q19",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "policy",
+      "question": "How often must passwords for privileged accounts be rotated?",
+      "ms": 141,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.83,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_password-policy.pdf",
+        "eval-corpus:policies_it-onboarding.md",
+        "eval-corpus:policies_code-of-conduct.pdf",
+        "eval-corpus:policies_mobile-phone-policy.md",
+        "eval-corpus:policies_travel-policy.md"
+      ]
+    },
+    {
+      "id": "q20",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "policy",
+      "question": "Within how many hours must a suspected security incident be reported?",
+      "ms": 140,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.75,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_incident-reporting.pdf",
+        "team-share:handbook_it-equipment-policy.md",
+        "eval-corpus:policies_travel-policy.md",
+        "eval-corpus:policies_visitor-policy.md",
+        "eval-corpus:policies_password-policy.pdf"
+      ]
+    },
+    {
+      "id": "q21",
+      "principal": "bob",
+      "type": "answerable",
+      "category": "policy",
+      "question": "How many days of annual leave do full-time employees receive?",
+      "ms": 46,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.88,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_leave-policy.docx",
+        "eval-corpus:policies_remote-work-policy.md",
+        "eval-corpus:policies_it-onboarding.md",
+        "eval-corpus:policies_leave-policy.docx",
+        "eval-corpus:policies_sick-leave-policy.docx"
+      ]
+    },
+    {
+      "id": "q22",
+      "principal": "bob",
+      "type": "answerable",
+      "category": "policy",
+      "question": "What is the annual training budget per employee?",
+      "ms": 46,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.8,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_training-policy.html",
+        "eval-corpus:policies_leave-policy.docx",
+        "eval-corpus:policies_training-policy.html",
+        "eval-corpus:policies_training-policy.html",
+        "eval-corpus:policies_travel-policy.md"
+      ]
+    },
+    {
+      "id": "q23",
+      "principal": "bob",
+      "type": "answerable",
+      "category": "policy",
+      "question": "How many days per week may employees work remotely?",
+      "ms": 55,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.88,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_remote-work-policy.md",
+        "eval-corpus:policies_leave-policy.docx",
+        "eval-corpus:policies_it-onboarding.md",
+        "eval-corpus:policies_leave-policy.docx",
+        "eval-corpus:policies_parking-policy.html"
+      ]
+    },
+    {
+      "id": "q24",
+      "principal": "carol",
+      "type": "answerable",
+      "category": "restricted",
+      "question": "What is the total value of the Borealis contract with Kestrel Systems?",
+      "ms": 160,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 1,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:finance-legal_borealis-contract.pdf",
+        "eval-corpus:finance-legal_cedar-contract.pdf",
+        "eval-corpus:finance-legal_dune-contract.pdf",
+        "eval-corpus:finance-legal_ember-contract.pdf",
+        "eval-corpus:finance-legal_borealis-legal-review.md"
+      ]
+    },
+    {
+      "id": "q25",
+      "principal": "carol",
+      "type": "answerable",
+      "category": "restricted",
+      "question": "What is the approved Dune budget for 2027?",
+      "ms": 181,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 1,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:finance-legal_dune-budget.docx",
+        "eval-corpus:finance-legal_borealis-budget.docx",
+        "eval-corpus:finance-legal_cedar-budget.docx",
+        "eval-corpus:finance-legal_ember-budget.docx",
+        "eval-corpus:finance-legal_dune-budget.docx"
+      ]
+    },
+    {
+      "id": "q26",
+      "principal": "carol",
+      "type": "answerable",
+      "category": "restricted",
+      "question": "What liability cap did the legal review accept for Harbor HR Cloud?",
+      "ms": 185,
+      "hit": true,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.88,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:finance-legal_ember-legal-review.md",
+        "eval-corpus:finance-legal_borealis-legal-review.md",
+        "eval-corpus:finance-legal_cedar-legal-review.md",
+        "eval-corpus:finance-legal_dune-legal-review.md",
+        "eval-corpus:finance-legal_ember-contract.pdf"
+      ]
+    },
+    {
+      "id": "q27",
+      "principal": "alice",
+      "type": "unanswerable",
+      "category": "unanswerable",
+      "question": "What is the Borealis marketing budget for 2029?",
+      "ms": 145,
+      "hit": null,
+      "versionOk": null,
+      "wouldAnswer": false,
+      "maxScore": 0.25,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_borealis_status-2026-06.pdf",
+        "eval-corpus:policies_training-policy.html",
+        "eval-corpus:projects_borealis_spec-encryption.pdf",
+        "eval-corpus:projects_borealis_spec-ingestion.pdf",
+        "eval-corpus:projects_borealis_spec-query-engine.pdf"
+      ]
+    },
+    {
+      "id": "q28",
+      "principal": "alice",
+      "type": "unanswerable",
+      "category": "unanswerable",
+      "question": "Which football club sponsors the Cedar app?",
+      "ms": 207,
+      "hit": null,
+      "versionOk": null,
+      "wouldAnswer": false,
+      "maxScore": 0.4,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_cedar_status-2026-06.pdf",
+        "eval-corpus:projects_cedar_status-2026-04.md",
+        "eval-corpus:projects_cedar_status-2026-04.md",
+        "eval-corpus:projects_cedar_status-2026-05.docx",
+        "eval-corpus:projects_cedar_status-2026-07.md"
+      ]
+    },
+    {
+      "id": "q29",
+      "principal": "alice",
+      "type": "unanswerable",
+      "category": "unanswerable",
+      "question": "What is the per diem for travel to the Moon?",
+      "ms": 151,
+      "hit": null,
+      "versionOk": null,
+      "wouldAnswer": true,
+      "maxScore": 0.75,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_travel-policy.md",
+        "eval-corpus:policies_travel-policy.md",
+        "eval-corpus:policies_leave-policy.docx",
+        "eval-corpus:policies_mobile-phone-policy.md",
+        "eval-corpus:policies_parking-policy.html"
+      ]
+    },
+    {
+      "id": "q30",
+      "principal": "alice",
+      "type": "unanswerable",
+      "category": "unanswerable",
+      "question": "Who won the Dune hackathon in 2025?",
+      "ms": 137,
+      "hit": null,
+      "versionOk": null,
+      "wouldAnswer": false,
+      "maxScore": 0.25,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_dune_status-2026-06.pdf",
+        "eval-corpus:projects_dune_spec-fleet-management.pdf",
+        "eval-corpus:projects_dune_spec-integration.pdf",
+        "eval-corpus:projects_dune_spec-network.pdf",
+        "eval-corpus:projects_dune_go-live-plan-v2.md"
+      ]
+    },
+    {
+      "id": "q31",
+      "principal": "alice",
+      "type": "unanswerable",
+      "category": "unanswerable",
+      "question": "What is the Ember share price target?",
+      "ms": 129,
+      "hit": null,
+      "versionOk": null,
+      "wouldAnswer": false,
+      "maxScore": 0.25,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_ember_status-2026-06.pdf",
+        "eval-corpus:projects_ember_spec-audit.pdf",
+        "eval-corpus:projects_ember_spec-identity.pdf",
+        "eval-corpus:projects_ember_spec-payroll.pdf",
+        "eval-corpus:projects_ember_go-live-plan-v2.md"
+      ]
+    },
+    {
+      "id": "q32",
+      "principal": "bob",
+      "type": "permission",
+      "category": "permission",
+      "question": "What was the main blocker for Borealis in May 2026?",
+      "ms": 63,
+      "hit": null,
+      "versionOk": null,
+      "wouldAnswer": false,
+      "maxScore": 0.2,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_data-classification.docx",
+        "eval-corpus:policies_leave-policy.docx",
+        "eval-corpus:policies_remote-work-policy.md",
+        "office-relocation-faq",
+        "office-relocation-faq"
+      ]
+    },
+    {
+      "id": "q33",
+      "principal": "alice",
+      "type": "permission",
+      "category": "permission",
+      "question": "What is the total value of the Borealis contract with Kestrel Systems?",
+      "ms": 167,
+      "hit": null,
+      "versionOk": null,
+      "wouldAnswer": false,
+      "maxScore": 0.5,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:projects_borealis_steering-minutes-1.docx",
+        "eval-corpus:projects_borealis_steering-minutes-2.docx",
+        "eval-corpus:projects_borealis_steering-minutes-3.docx",
+        "eval-corpus:projects_borealis_steering-minutes-4.docx",
+        "eval-corpus:projects_borealis_status-2026-06.pdf"
+      ]
+    },
+    {
+      "id": "q34",
+      "principal": "bob",
+      "type": "permission",
+      "category": "permission",
+      "question": "What is the approved Dune budget for 2027?",
+      "ms": 58,
+      "hit": null,
+      "versionOk": null,
+      "wouldAnswer": false,
+      "maxScore": 0.25,
+      "leaks": [],
+      "canaryLeak": false,
+      "top": [
+        "eval-corpus:policies_training-policy.html",
+        "eval-corpus:policies_holiday-calendar.pdf",
+        "eval-corpus:policies_procurement-policy.html",
+        "eval-corpus:policies_training-policy.html"
+      ]
+    }
+  ]
+}

@@ -7,7 +7,18 @@ import { SourcesConfigSchema, type SourceAdapter, type SourceConfig } from "./ty
  * Default synthetic sources: the Atlas fixtures (two sources) and a folder
  * share with inherited permissions. Overridden by KNOWLEDGE_SOURCES (JSON).
  */
-export function defaultSources(fixturesRoot: string): SourceConfig[] {
+export function defaultSources(fixturesRoot: string, opts: { includeEvalCorpus?: boolean } = {}): SourceConfig[] {
+  const evalCorpus = opts.includeEvalCorpus
+    ? [
+        {
+          id: "eval-corpus",
+          title: "Evaluation corpus (synthetic)",
+          kind: "folder",
+          settings: { path: join(fixturesRoot, "sources", "eval-corpus") },
+          aclMap: { "CORP\\Everyone": "all-staff", "CORP\\Project Teams": "atlas-team", "CORP\\Finance and Legal": "finance-legal" },
+        },
+      ]
+    : [];
   return SourcesConfigSchema.parse([
     { id: "atlas-project-docs", title: "Atlas project documents", kind: "fixture", settings: { path: join(fixturesRoot, "documents") }, aclPassThrough: true, prefixDocumentIds: false },
     { id: "company-handbook", title: "Company handbook", kind: "fixture", settings: { path: join(fixturesRoot, "documents") }, aclPassThrough: true, prefixDocumentIds: false },
@@ -18,11 +29,12 @@ export function defaultSources(fixturesRoot: string): SourceConfig[] {
       settings: { path: join(fixturesRoot, "sources", "team-share") },
       aclMap: { "SHARE\\All Staff": "all-staff", "SHARE\\Atlas": "atlas-team", "SHARE\\Legal": "finance-legal" },
     },
+    ...evalCorpus,
   ]);
 }
 
-export function loadSources(json: string | undefined, fixturesRoot: string): SourceConfig[] {
-  return json ? SourcesConfigSchema.parse(JSON.parse(json)) : defaultSources(fixturesRoot);
+export function loadSources(json: string | undefined, fixturesRoot: string, opts: { includeEvalCorpus?: boolean } = {}): SourceConfig[] {
+  return json ? SourcesConfigSchema.parse(JSON.parse(json)) : defaultSources(fixturesRoot, opts);
 }
 
 export function adapterFor(source: SourceConfig): SourceAdapter {

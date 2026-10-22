@@ -18,13 +18,14 @@ export async function seedFixtures(
   fixturesRoot: string,
   customerId: string,
   sourcesJson?: string,
+  opts: { includeEvalCorpus?: boolean } = {},
 ): Promise<{ principals: number; documents: number; tombstoned: number; quarantined: number }> {
   const identities = JSON.parse(await readFile(join(fixturesRoot, "identities.json"), "utf8")) as IdentityFixtureFile;
   if (identities.customer.id !== customerId) {
     throw new Error(`fixture customer ${identities.customer.id} does not match CUSTOMER_ID ${customerId}`);
   }
   await seedIdentities(db, identities.customer, identities.principals);
-  const reports = await ingestAll(db, customerId, loadSources(sourcesJson, fixturesRoot), () => {});
+  const reports = await ingestAll(db, customerId, loadSources(sourcesJson, fixturesRoot, opts), () => {});
   const sum = (k: "upserted" | "unchanged" | "aclChanged" | "tombstoned" | "quarantined") => Object.values(reports).reduce((n, r) => n + r[k], 0);
   return {
     principals: identities.principals.length,

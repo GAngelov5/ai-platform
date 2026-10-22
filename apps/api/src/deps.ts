@@ -23,7 +23,7 @@ export const DEFAULT_FIXTURES_DIR = fileURLToPath(new URL("../../../fixtures/doc
 
 /** Sources this deployment's application policy allows to be searched: every configured source. */
 export const policySourceIds = (config: PlatformConfig) =>
-  loadSources(config.ingestion.sourcesJson, process.env.FIXTURES_ROOT ?? DEFAULT_FIXTURES_ROOT).map((s) => s.id);
+  loadSources(config.ingestion.sourcesJson, process.env.FIXTURES_ROOT ?? DEFAULT_FIXTURES_ROOT, { includeEvalCorpus: config.ingestion.includeEvalCorpus }).map((s) => s.id);
 
 export interface PlatformDeps {
   config: PlatformConfig;
@@ -60,6 +60,7 @@ export async function createKnowledgeAdapter(config: PlatformConfig, repos: Repo
       apiKey: k.apiKey,
       timeoutMs: k.timeoutMs,
       queryMode: k.queryMode,
+      ranking: k.ranking,
       // LightRAG has no "chunks of a document" endpoint: views come from the platform content store.
       documentContent: async (doc) => (await chunks(doc)).map((c) => ({ documentId: doc.documentId, chunkId: c.chunkId, text: c.text, location: c.location, score: 1 })),
     });

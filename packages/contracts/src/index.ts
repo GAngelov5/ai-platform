@@ -26,6 +26,8 @@ export const EvidenceSchema = z.strictObject({
   /** Only text the principal is authorized to read. */
   excerpt: z.string().max(4000),
   score: z.number().min(0),
+  /** A newer version of this document exists and the principal can read it. */
+  supersededBy: IdSchema.optional(),
 });
 export type Evidence = z.infer<typeof EvidenceSchema>;
 

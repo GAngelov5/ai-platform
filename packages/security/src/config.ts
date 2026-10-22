@@ -39,11 +39,14 @@ const EnvSchema = z.object({
   LIGHTRAG_PARTITIONS: z.string().optional(),
   LIGHTRAG_API_KEY: z.string().optional(),
   LIGHTRAG_QUERY_MODE: z.enum(["naive", "local", "global", "hybrid", "mix"]).default("mix"),
+  LIGHTRAG_RANKING: z.enum(["lexical", "native"]).default("lexical"),
   LIGHTRAG_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(60000),
 
   /** JSON list of knowledge sources (packages/knowledge SourcesConfigSchema); defaults to the synthetic sources. */
   KNOWLEDGE_SOURCES: z.string().optional(),
   INGEST_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(15),
+  /** Adds the synthetic evaluation corpus (fixtures/sources/eval-corpus) to the default sources. */
+  KNOWLEDGE_INCLUDE_EVAL_CORPUS: bool.default(false),
   /** JSON allowlist of MCP servers with pinned tool hashes (see packages/connectors McpServersSchema). */
   MCP_SERVERS: z.string().optional(),
   ACTION_PROPOSAL_TTL_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(30),
@@ -77,11 +80,12 @@ export interface PlatformConfig {
         partitions: { id: string; url: string; sourceIds: string[]; aclGroups: string[] }[];
         apiKey: string;
         queryMode: "naive" | "local" | "global" | "hybrid" | "mix";
+        ranking: "lexical" | "native";
         timeoutMs: number;
         fixturesDir?: string;
       };
   integrations: { mcpServersJson?: string; proposalTtlMinutes: number };
-  ingestion: { sourcesJson?: string; intervalMinutes: number };
+  ingestion: { sourcesJson?: string; intervalMinutes: number; includeEvalCorpus: boolean };
   model:
     | { mode: "local" | "hybrid"; provider: "fake" }
     | {
@@ -141,6 +145,7 @@ export function loadPlatformConfig(
   }
 
   // --- Knowledge -------------------------------------------------------------
+  if (prod && e.KNOWLEDGE_INCLUDE_EVAL_CORPUS) problems.push("production must not include the synthetic evaluation corpus");
   if (prod && e.KNOWLEDGE_PROVIDER === "fixture") problems.push("production must not use the synthetic fixture knowledge provider");
   if (e.KNOWLEDGE_PROVIDER === "ragflow") {
     if (!e.RAGFLOW_BASE_URL) problems.push("RAGFLOW_BASE_URL is required when KNOWLEDGE_PROVIDER=ragflow");
@@ -234,12 +239,13 @@ export function loadPlatformConfig(
               partitions: lightragPartitions,
               apiKey: e.LIGHTRAG_API_KEY!,
               queryMode: e.LIGHTRAG_QUERY_MODE,
+              ranking: e.LIGHTRAG_RANKING,
               timeoutMs: e.LIGHTRAG_TIMEOUT_MS,
               fixturesDir: e.FIXTURES_DIR,
             }
           : { provider: "fixture", fixturesDir: e.FIXTURES_DIR },
     integrations: { mcpServersJson: e.MCP_SERVERS, proposalTtlMinutes: e.ACTION_PROPOSAL_TTL_MINUTES },
-    ingestion: { sourcesJson: e.KNOWLEDGE_SOURCES, intervalMinutes: e.INGEST_INTERVAL_MINUTES },
+    ingestion: { sourcesJson: e.KNOWLEDGE_SOURCES, intervalMinutes: e.INGEST_INTERVAL_MINUTES, includeEvalCorpus: e.KNOWLEDGE_INCLUDE_EVAL_CORPUS },
     model:
       e.MODEL_PROVIDER === "openai-compatible"
         ? {

@@ -15,6 +15,12 @@ export interface LightRagAdapterOptions {
   timeoutMs: number;
   queryMode: LightRagQueryMode;
   /**
+   * "lexical" (default): order LightRAG's candidates by query-term overlap.
+   * "native": keep LightRAG's own retrieval order (interleaved by rank across
+   * partitions); the overlap score still feeds the evidence threshold.
+   */
+  ranking?: "lexical" | "native";
+  /**
    * Source text for the protected document view. LightRAG v1.5.7 has no
    * "chunks of a document" endpoint, so the view is served from the
    * platform's ingestion copy of the (already authorized) document.
@@ -34,7 +40,8 @@ export interface LightRagAdapterOptions {
  *
  * LightRAG returns no relevance score, so the score is the fraction of query
  * terms present in the chunk (same scale as the fixture adapter); the agent's
- * minEvidenceScore gate therefore behaves consistently across adapters.
+ * minEvidenceScore gate therefore behaves consistently across adapters. The
+ * order is that score by default, or LightRAG's own order (`ranking: "native"`).
  */
 export class LightRagKnowledgeAdapter implements KnowledgeAdapter {
   readonly name = "lightrag";
@@ -72,21 +79,23 @@ export class LightRagKnowledgeAdapter implements KnowledgeAdapter {
           { mode: this.o.queryMode, chunkTopK: Math.max(req.limit, 5), topK: 20 },
           req.signal,
         );
-        const out: AdapterChunk[] = [];
+        const out: (AdapterChunk & { rank: number })[] = [];
         for (const c of chunks) {
           const doc = byFile.get(c.file_path.split("/").pop() ?? "");
           if (!doc || !c.content.trim()) continue; // not an authorized, current document: drop
           const t = new Set(terms(`${doc.title} ${c.content}`));
           const score = q.length ? q.filter((x) => t.has(x)).length / q.length : 0;
-          out.push({ documentId: doc.documentId, chunkId: `lr:${pid}:${c.chunk_id}`.slice(0, 200), text: c.content, score });
+          out.push({ documentId: doc.documentId, chunkId: `lr:${pid}:${c.chunk_id}`.slice(0, 200), text: c.content, score, rank: out.length });
         }
         return out;
       }),
     );
+    const native = this.o.ranking === "native";
     return perPartition
       .flat()
-      .sort((a, b) => b.score - a.score || a.chunkId.localeCompare(b.chunkId))
-      .slice(0, req.limit);
+      .sort((a, b) => (native ? a.rank - b.rank : 0) || b.score - a.score || a.chunkId.localeCompare(b.chunkId))
+      .slice(0, req.limit)
+      .map(({ rank: _rank, ...c }) => c);
   }
 
   getDocumentChunks(doc: CatalogDocument): Promise<AdapterChunk[]> {

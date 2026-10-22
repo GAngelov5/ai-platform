@@ -16,6 +16,12 @@ export interface DatabaseHandle {
   db: Database;
   ping(): Promise<void>;
   close(): Promise<void>;
+  /**
+   * Runs `fn` while holding a session-level advisory lock on a dedicated
+   * connection, so long jobs (ingest, RAG sync) never overlap across
+   * processes. With `wait: false` it returns `{ acquired: false }` when busy.
+   */
+  withLock<T>(name: string, fn: () => Promise<T>, opts?: { wait?: boolean }): Promise<{ acquired: true; value: T } | { acquired: false }>;
 }
 
 export function connectDatabase(url: string, opts: { max?: number } = {}): DatabaseHandle {
@@ -32,6 +38,24 @@ export function connectDatabase(url: string, opts: { max?: number } = {}): Datab
       await db.execute(sql`select 1`);
     },
     close: () => client.end({ timeout: 5 }),
+    async withLock(name, fn, opts = {}) {
+      const conn = await client.reserve();
+      try {
+        if (opts.wait ?? true) {
+          await conn`select pg_advisory_lock(hashtext(${name}))`;
+        } else {
+          const [row] = await conn`select pg_try_advisory_lock(hashtext(${name})) as ok`;
+          if (!row?.ok) return { acquired: false };
+        }
+        try {
+          return { acquired: true, value: await fn() };
+        } finally {
+          await conn`select pg_advisory_unlock(hashtext(${name}))`;
+        }
+      } finally {
+        conn.release();
+      }
+    },
   };
 }
 

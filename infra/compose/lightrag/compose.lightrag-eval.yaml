@@ -1,0 +1,28 @@
+# Evaluation overlay (stage 3b): adds the synthetic eval corpus to the three
+# existing access-set partitions. Stack it after compose.lightrag.yaml on every
+# command, including the long-running worker. Without it the next sync treats
+# the eval documents as unpartitioned and purges them from LightRAG.
+#
+#   docker-compose -f infra/compose/compose.yaml -f infra/compose/compose.dev.yaml \
+#     -f infra/compose/lightrag/compose.lightrag.yaml \
+#     -f infra/compose/lightrag/compose.lightrag-eval.yaml up -d
+#
+# The eval corpus's ACL sets (CORP\Everyone, CORP\Project Teams, CORP\Finance
+# and Legal) map onto all-staff, atlas-team and finance-legal, so no new
+# containers are needed. Refused when APP_ENV=production.
+
+x-eval-env: &eval-env
+  KNOWLEDGE_INCLUDE_EVAL_CORPUS: "true"
+  LIGHTRAG_PARTITIONS: >-
+    [{"id":"p_handbook_all_staff","url":"http://lightrag-handbook:9621","sourceIds":["company-handbook","team-share","eval-corpus"],"aclGroups":["all-staff"]},
+     {"id":"p_atlas_team","url":"http://lightrag-atlas-team:9621","sourceIds":["atlas-project-docs","team-share","eval-corpus"],"aclGroups":["atlas-team"]},
+     {"id":"p_atlas_finance_legal","url":"http://lightrag-atlas-finlegal:9621","sourceIds":["atlas-project-docs","team-share","eval-corpus"],"aclGroups":["finance-legal"]}]
+
+services:
+  api:
+    # LIGHTRAG_RANKING=native measures LightRAG's own ordering (ADR 0010).
+    environment: { <<: *eval-env, LIGHTRAG_RANKING: "${LIGHTRAG_RANKING:-lexical}" }
+  worker:
+    environment: *eval-env
+  lightrag-sync:
+    environment: *eval-env

@@ -373,7 +373,7 @@ describe("ingested folder source (team-share)", () => {
       expect(ids(r)).not.toContain("team-share:contractors_onboarding.md");
     }
     const q = await createRepositories(db).sources.listQuarantine("cust_demo", "team-share");
-    expect(q.map((x) => [x.externalId, x.reason])).toEqual([["atlas/architecture-diagram.pdf", "unsupported_type"]]);
+    expect(q.map((x) => [x.externalId, x.reason])).toEqual([["atlas/architecture-diagram.pdf", "needs_ocr"]]);
     const state = await createRepositories(db).sources.getState("cust_demo", "team-share");
     expect(state?.lastRun).toMatchObject({ full: true, unmappedAcl: 1 });
   });

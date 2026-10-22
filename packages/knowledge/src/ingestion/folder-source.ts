@@ -25,7 +25,9 @@ interface AclFile {
  * - Permissions: a folder's `.acl.json` lists the native groups that may read
  *   it; subfolders inherit unless they have their own file (like NTFS
  *   inheritance, simplified). No ACL anywhere up the tree = no readers.
- * - Change tracking: full scan each run (version = mtime + size).
+ * - Change tracking: full scan each run (version = mtime truncated to whole seconds + size;
+ *   copies such as container images keep only seconds, so finer precision would
+ *   re-version unchanged files).
  * - Safety: never follows symlinks; never leaves the configured root.
  */
 export class FolderSourceAdapter implements SourceAdapter {
@@ -70,7 +72,7 @@ export class FolderSourceAdapter implements SourceAdapter {
         const mime = MIME[extname(entry).toLowerCase()] ?? "application/octet-stream";
         items.push({
           externalId: rel,
-          version: `${Math.floor(st.mtimeMs)}-${st.size}`,
+          version: `${Math.floor(st.mtimeMs / 1000) * 1000}-${st.size}`,
           title: entry.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " "),
           url: `share://${this.sourceId}/${rel}`,
           modifiedAt: st.mtime,

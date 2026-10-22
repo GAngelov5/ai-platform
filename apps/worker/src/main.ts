@@ -49,7 +49,7 @@ async function main() {
       if (c.env === "production") throw new Error("refusing to seed synthetic fixtures in production");
       const h = connectDatabase(c.databaseUrl!, { max: 1 });
       try {
-        const r = await seedFixtures(h.db, FIXTURES_ROOT, c.customerId, c.ingestion.sourcesJson);
+        const r = await seedFixtures(h.db, FIXTURES_ROOT, c.customerId, c.ingestion.sourcesJson, { includeEvalCorpus: c.ingestion.includeEvalCorpus });
         log.info(r, "synthetic fixtures seeded");
       } finally {
         await h.close();
@@ -79,9 +79,15 @@ async function main() {
       const c = config({ requireDatabase: true });
       if (c.knowledge.provider !== "lightrag") throw new Error("set KNOWLEDGE_PROVIDER=lightrag and LIGHTRAG_* to sync");
       const k = c.knowledge;
-      const h = connectDatabase(c.databaseUrl!, { max: 1 });
+      // One connection holds the indexing lock; the other runs the queries.
+      const h = connectDatabase(c.databaseUrl!, { max: 2 });
       try {
-        const report = await lightragSync(h.db, c.customerId, k.partitions, k.apiKey, k.timeoutMs, (m) => log.info(m));
+        log.info("waiting for the knowledge indexing lock (another ingest or sync may be running)");
+        const run = await h.withLock(indexLock(c.customerId), () =>
+          lightragSync(h.db, c.customerId, k.partitions, k.apiKey, k.timeoutMs, (m) => log.info(m)),
+        );
+        if (!run.acquired) throw new Error("indexing lock not acquired");
+        const report = run.value;
         log.info(report, "lightrag sync complete");
         if (report.failed.length || !report.deletionVerified) process.exitCode = 2;
       } finally {
@@ -91,15 +97,17 @@ async function main() {
     }
     case "ingest": {
       const c = config({ requireDatabase: true });
-      const h = connectDatabase(c.databaseUrl!, { max: 1 });
+      const h = connectDatabase(c.databaseUrl!, { max: 2 });
       try {
-        const reports = await ingestAll(h.db, c.customerId, loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT), (m, d) => log.info(d ?? {}, m), process.argv[3]);
-        for (const [id, r] of Object.entries(reports)) log.info({ source: id, ...r }, "ingestion complete");
-        if (c.knowledge.provider === "lightrag" && process.argv.includes("--sync")) {
-          const k = c.knowledge;
-          const report = await lightragSync(h.db, c.customerId, k.partitions, k.apiKey, k.timeoutMs, (m) => log.info(m));
-          log.info(report, "lightrag sync complete");
-        }
+        await h.withLock(indexLock(c.customerId), async () => {
+          const reports = await ingestAll(h.db, c.customerId, loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT, { includeEvalCorpus: c.ingestion.includeEvalCorpus }), (m, d) => log.info(d ?? {}, m), process.argv[3]);
+          for (const [id, r] of Object.entries(reports)) log.info({ source: id, ...r }, "ingestion complete");
+          if (c.knowledge.provider === "lightrag" && process.argv.includes("--sync")) {
+            const k = c.knowledge;
+            const report = await lightragSync(h.db, c.customerId, k.partitions, k.apiKey, k.timeoutMs, (m) => log.info(m));
+            log.info(report, "lightrag sync complete");
+          }
+        });
       } finally {
         await h.close();
       }
@@ -127,10 +135,11 @@ async function main() {
     case "start": {
       const c = config({ requireDatabase: true, requireRedis: true });
       const connection = { url: c.redisUrl! };
-      const h = connectDatabase(c.databaseUrl!, { max: 2 });
+      // Three connections: a long sync holds one for the indexing lock.
+      const h = connectDatabase(c.databaseUrl!, { max: 3 });
       await waitFor("postgres", h.ping);
       const repos = createRepositories(h.db);
-      const sources = loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT);
+      const sources = loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT, { includeEvalCorpus: c.ingestion.includeEvalCorpus });
       const { actions } = buildIntegrations({
         db: h.db,
         mcpServersJson: c.integrations.mcpServersJson,
@@ -154,15 +163,30 @@ async function main() {
             return report;
           }
           if (job.name === "knowledge-ingest") {
-            const reports = await ingestAll(h.db, c.customerId, sources, (m, d) => log.info(d ?? {}, m));
-            const changed = Object.values(reports).some((r) => r.upserted || r.tombstoned || r.aclChanged);
-            let sync: unknown = "skipped";
-            if (changed && c.knowledge.provider === "lightrag") {
-              const k = c.knowledge;
-              sync = await lightragSync(h.db, c.customerId, k.partitions, k.apiKey, k.timeoutMs, (m) => log.info(m));
+            // Ingest and sync must never overlap with another ingest or sync (e.g. an
+            // operator's one-shot run): concurrent syncs delete each other's inserts.
+            const run = await h.withLock(
+              indexLock(c.customerId),
+              async () => {
+                const reports = await ingestAll(h.db, c.customerId, sources, (m, d) => log.info(d ?? {}, m));
+                const changed = Object.values(reports).some((r) => r.upserted || r.tombstoned || r.aclChanged);
+                let sync: unknown = "skipped";
+                // Reconcile on every run, not only after changes: a sync that hit its
+                // deadline (large first index) must resume on the next run.
+                if (c.knowledge.provider === "lightrag") {
+                  const k = c.knowledge;
+                  sync = await lightragSync(h.db, c.customerId, k.partitions, k.apiKey, k.timeoutMs, (m) => log.info(m));
+                }
+                log.info({ reports, sync }, "scheduled ingestion");
+                return { sources: Object.keys(reports).length, changed };
+              },
+              { wait: false },
+            );
+            if (!run.acquired) {
+              log.info("scheduled ingestion skipped: another ingest or sync holds the indexing lock");
+              return { skipped: "busy" };
             }
-            log.info({ reports, sync }, "scheduled ingestion");
-            return { sources: Object.keys(reports).length, changed };
+            return run.value;
           }
           if (job.name === "action-maintenance") {
             const expired = await actions.expireStale();
@@ -209,6 +233,9 @@ async function main() {
       throw new Error(`unknown command ${cmd} (migrate | seed | ingest [sourceId] [--sync] | ragflow-ingest | lightrag-sync | mcp-pins | healthcheck | start)`);
   }
 }
+
+/** One indexing run (ingest and/or RAG sync) per customer at a time, across processes. */
+const indexLock = (customerId: string) => `knowledge-index:${customerId}`;
 
 /** Converges LightRAG partitions with the catalog, reading text from the platform content store. */
 async function lightragSync(db: ReturnType<typeof connectDatabase>["db"], customerId: string, partitions: LightRagPartition[], apiKey: string, timeoutMs: number, log: (m: string) => void) {

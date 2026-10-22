@@ -11,6 +11,7 @@ import type {
   PrincipalDirectory,
   SearchInput,
 } from "./types.js";
+import { supersededVersions } from "./versions.js";
 
 export interface KnowledgeServiceOptions {
   catalog: DocumentCatalog;
@@ -62,7 +63,12 @@ export class PolicyEnforcingKnowledgeService implements KnowledgeService {
     if (authorized.size === 0) return []; // fail closed: never search an unscoped backend
 
     const limit = Math.max(1, Math.min(input.limit, 20));
-    const chunks = await this.o.adapter.search({ query: input.query, limit, documents: [...authorized.values()] });
+    const raw = await this.o.adapter.search({ query: input.query, limit, documents: [...authorized.values()] });
+    // Backend-independent version handling: superseded versions move after current
+    // ones. Otherwise the backend's order and scores are kept (stable sort), so old
+    // versions stay usable evidence for "what changed" questions.
+    const superseded = supersededVersions([...authorized.values()]);
+    const chunks = [...raw].sort((a, b) => Number(superseded.has(a.documentId)) - Number(superseded.has(b.documentId)));
 
     const evidence: Evidence[] = [];
     const ledger: IssuedEvidence[] = [];
@@ -86,6 +92,7 @@ export class PolicyEnforcingKnowledgeService implements KnowledgeService {
         indexedAt: doc.indexedAt.toISOString(),
         excerpt: c.text.slice(0, this.maxExcerpt),
         score: Math.max(0, Math.min(1, c.score)),
+        ...(superseded.has(doc.documentId) ? { supersededBy: superseded.get(doc.documentId) } : {}),
       };
       evidence.push(ev);
       ledger.push({

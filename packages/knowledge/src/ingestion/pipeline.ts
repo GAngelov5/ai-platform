@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { CatalogDocument } from "../types.js";
-import { parseContent, UnsupportedTypeError } from "./parse.js";
+import { ParseFailure, parseDocument, UnsupportedTypeError } from "./parse.js";
 import type { QuarantineReason, SourceAdapter, SourceConfig, SourceItem } from "./types.js";
 
 /** Storage the pipeline needs (implemented by the database repositories). */
@@ -157,9 +157,10 @@ export async function ingestSource(
     let text: string;
     try {
       const raw = await adapter.fetchContent(item, opts.signal);
-      text = parseContent(raw, item.mimeType);
+      text = await parseDocument(raw, item.mimeType);
     } catch (err) {
       if (err instanceof UnsupportedTypeError) await quarantine(item, "unsupported_type", err.mimeType);
+      else if (err instanceof ParseFailure) await quarantine(item, err.reason, err.message);
       else await quarantine(item, "fetch_error", (err as Error).message);
       continue;
     }

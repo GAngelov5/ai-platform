@@ -19,6 +19,8 @@
     "dev:full": "turbo run dev --filter=@platform/api --filter=@platform/web --filter=@platform/worker --filter=@platform/mcp-atlas-tracker"
   },
   "devDependencies": {
+    "docx": "9.9.0",
+    "pdf-lib": "1.17.1",
     "turbo": "^2.11.7",
     "typescript": "^7.0.2"
   }

@@ -81,7 +81,7 @@ describe("ingestSource with the folder adapter", () => {
     expect(html).toContain("reconciliation run & sign-off");
     expect(html).not.toContain("console.log");
     expect(r.quarantined).toBe(1);
-    expect(m.quarantined.get("atlas/architecture-diagram.pdf")).toMatchObject({ reason: "unsupported_type" });
+    expect(m.quarantined.get("atlas/architecture-diagram.pdf")).toMatchObject({ reason: "needs_ocr" });
     expect(doc(m, "atlas/architecture-diagram.pdf")).toBeUndefined();
   });
 

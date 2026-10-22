@@ -204,6 +204,22 @@ describe("LightRagKnowledgeAdapter (mocked HTTP)", () => {
     expect(await adapter.search({ query: "Atlas delay", limit: 5, documents: [newVersion] })).toEqual([]);
   });
 
+  it("keeps LightRAG's own order with ranking: native, and term overlap otherwise", async () => {
+    const cluster = fakeCluster();
+    const { byId, target } = catalogTarget([doc("first", ["atlas-team"]), doc("second", ["atlas-team"])]);
+    target.content = async (d) => (d.documentId === "first" ? "weak match" : "Atlas delay delay strong match");
+    await syncLightRagPartitions(PARTS, { apiKey: "k", timeoutMs: 1000, fetch: cluster.f, pollMs: 1 }, target, () => {});
+    const docs = [byId.get("first")!, byId.get("second")!];
+    const make = (ranking?: "native" | "lexical") =>
+      new LightRagKnowledgeAdapter({ partitions: PARTS, apiKey: "k", timeoutMs: 1000, queryMode: "mix", ranking, documentContent: async () => [], fetch: cluster.f });
+    // The fake returns chunks in insertion order: "first" is LightRAG's top hit.
+    const native = await make("native").search({ query: "delay match", limit: 5, documents: docs });
+    expect(native.map((c) => c.documentId)).toEqual(["first", "second"]);
+    expect(native[0]!.score).toBe(0.5); // the threshold still sees term overlap
+    const lexical = await make().search({ query: "delay match", limit: 5, documents: docs });
+    expect(lexical.map((c) => c.documentId)).toEqual(["second", "first"]);
+  });
+
   it("reports unhealthy partitions", async () => {
     const adapter = new LightRagKnowledgeAdapter({
       partitions: PARTS,

@@ -11,13 +11,15 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && cp src/ingestion/parse-worker.mjs dist/ingestion/parse-worker.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@platform/contracts": "workspace:*",
     "@platform/security": "workspace:*",
+    "mammoth": "1.13.0",
+    "unpdf": "1.8.1",
     "zod": "^4.6.0"
   },
   "devDependencies": {

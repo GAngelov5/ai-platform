@@ -135,6 +135,26 @@ quarantine, the platform content store, deletion and the RAG sync.
   failed items with their reason are in `source_quarantine`.
 - **New systems** (SharePoint, Jira, SMB) add only an adapter plus its
   permission mapping. See ADR 0009 for the planned adapters.
+- **Formats:** Markdown, text, HTML, PDF (`unpdf`) and DOCX (`mammoth`).
+  PDF and DOCX are parsed in a worker thread with memory and time limits.
+  Scans without a text layer are quarantined as `needs_ocr` (ADR 0010).
+
+## Retrieval evaluation (ADR 0010)
+
+A synthetic corpus of 110 files and 34 labeled questions measures a
+knowledge backend against the pilot gates: recall, abstention, leaks and
+version handling.
+
+```bash
+node scripts/generate-eval-corpus.mjs        # deterministic; already committed
+# Local API with the lexical backend:
+KNOWLEDGE_INCLUDE_EVAL_CORPUS=true pnpm --filter @platform/worker cli ingest eval-corpus
+EVAL_BASE_URL=http://localhost:4000 EVAL_LABEL=lexical node scripts/eval-retrieval.mjs
+# LightRAG: stack compose.lightrag-eval.yaml on every command, run lightrag-sync, then
+EVAL_BASE_URL=https://localhost:8443 SMOKE_INSECURE_TLS=1 EVAL_LABEL=lightrag node scripts/eval-retrieval.mjs
+```
+
+Reports are written to `docs/eval/`.
 
 ## Quick start D — integrations: real local model, MCP and approvals
 
@@ -260,6 +280,7 @@ Not implemented: OIDC, streaming, Microsoft Graph, MCP, actions/approvals,
 workflows, the second agent, Playwright tests, backups. Those are later phases.
 **Gate status:** source permission changes and deletion handling are proven
 against the real, pinned **LightRAG** backend on synthetic data (ADR 0006).
-Before adding broader company sources, decide whether one partition per
-access set scales to the real ACL model, then run the 100–200 document
-selection evaluation.
+The selection evaluation (ADR 0010, `docs/eval/`) runs over 110 synthetic
+documents. Still open: citation support and model-level abstention, which
+need real model answers, and whether one partition per access set scales to
+the real ACL model.
