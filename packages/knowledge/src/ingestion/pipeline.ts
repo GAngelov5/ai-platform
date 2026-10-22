@@ -44,12 +44,35 @@ export interface IngestionReport {
   error?: string;
 }
 
-/** Stable, ID-safe platform document ID for a source item. */
+// Official Bulgarian transliteration (Streamlined System), for readable IDs of Cyrillic file names.
+const BG_LATIN: Record<string, string> = {
+  а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ж: "zh", з: "z", и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p",
+  р: "r", с: "s", т: "t", у: "u", ф: "f", х: "h", ц: "ts", ч: "ch", ш: "sh", щ: "sht", ъ: "a", ь: "y", ю: "yu", я: "ya",
+};
+const transliterate = (s: string) =>
+  [...s]
+    .map((c) => {
+      const t = BG_LATIN[c.toLowerCase()];
+      if (!t) return c;
+      return c === c.toLowerCase() ? t : t[0]!.toUpperCase() + t.slice(1);
+    })
+    .join("");
+
+/**
+ * Stable, ID-safe platform document ID for a source item. ASCII names map as
+ * before ("/" and spaces become "_"). Names with other characters (e.g.
+ * Cyrillic) are transliterated and get a short hash of the original name, so
+ * "отпуски.md" and "договор.md" can never collapse into the same ID.
+ */
 export function documentIdFor(source: SourceConfig, externalId: string): string {
   const raw = source.prefixDocumentIds ? `${source.id}:${externalId}` : externalId;
-  const safe = raw.replace(/[^A-Za-z0-9._:#-]/g, "_");
-  if (safe.length <= 160) return safe;
-  return `${safe.slice(0, 120)}~${createHash("sha256").update(raw).digest("hex").slice(0, 16)}`;
+  const hash = (n: number) => createHash("sha256").update(raw).digest("hex").slice(0, n);
+  // eslint-disable-next-line no-control-regex
+  const nonAscii = /[^\x00-\x7f]/.test(raw);
+  const safe = (nonAscii ? transliterate(raw) : raw).replace(/[^A-Za-z0-9._:#-]/g, "_");
+  // "--" + hash: IDs allow only [A-Za-z0-9._:#-] (contracts IdSchema).
+  if (safe.length <= 160) return nonAscii ? `${safe}--${hash(8)}` : safe;
+  return `${safe.slice(0, 120)}--${hash(16)}`;
 }
 
 /** Native groups -> platform groups. Unmapped groups are dropped; an empty result means unsearchable. */

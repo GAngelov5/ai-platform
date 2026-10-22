@@ -121,6 +121,8 @@ export const AgentDefinitionSchema = z.strictObject({
   version: z.string().regex(/^\d+\.\d+\.\d+$/),
   name: z.string().min(1).max(100),
   description: z.string().max(500),
+  /** UI display texts per language (e.g. "bg"); the model always gets `instructions`. */
+  localized: z.record(z.string().regex(/^[a-z]{2}$/), z.strictObject({ name: z.string().min(1).max(100), description: z.string().max(500) })).optional(),
   instructions: z.string().min(1).max(8000),
   /** Capability ids. Unknown ids are simply unavailable at runtime (fail closed). */
   capabilities: z.array(CapabilityIdSchema).min(1),

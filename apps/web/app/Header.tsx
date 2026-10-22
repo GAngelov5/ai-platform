@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { MeResponse, PublicConfig } from "@platform/contracts";
+import { LANGS, useT } from "@platform/ui";
 import { api } from "../lib/api";
 import { useActions } from "../lib/usePendingActions";
 
@@ -17,6 +18,7 @@ const initials = (name: string) =>
     .join("");
 
 export function Header({ me, config, onLogout, active = "none" }: { me?: MeResponse | null; config?: PublicConfig; onLogout?: () => void; active?: Section }) {
+  const { t, lang, setLang } = useT();
   const { actions } = useActions(!!me);
   const pending = actions.filter((a) => a.state === "pending_approval").length;
   const [open, setOpen] = useState(false);
@@ -53,29 +55,43 @@ export function Header({ me, config, onLogout, active = "none" }: { me?: MeRespo
       </a>
       {me && (
         <nav aria-label="Main" className="ml-3 flex gap-0.5 text-sm">
-          {navLink("/chat", "Assistants", "assistants")}
+          {navLink("/chat", t("nav.assistants"), "assistants")}
           {navLink(
             "/inbox",
-            "Inbox",
+            t("nav.inbox"),
             "inbox",
             pending > 0 ? (
-              <span className="ml-1.5 text-xs font-bold text-chrome-count" aria-label={`${pending} waiting`}>
+              <span className="ml-1.5 text-xs font-bold text-chrome-count" aria-label={t("nav.waiting", { n: pending })}>
                 {pending}
               </span>
             ) : null,
           )}
           {/* Shown for admins only; the server enforces the role on every admin route. */}
-          {me.roles?.includes("admin") && navLink("/admin", "Admin", "admin")}
+          {me.roles?.includes("admin") && navLink("/admin", t("nav.admin"), "admin")}
         </nav>
       )}
       {config && (
         <span className="text-xs text-chrome-muted">
-          {config.environment === "production" ? "" : "Synthetic demo · "}
-          {config.modelProvider.startsWith("fake") ? "fake model" : "local model"} · {config.knowledgeProvider}
+          {config.environment === "production" ? "" : t("header.synthetic")}
+          {config.modelProvider.startsWith("fake") ? t("header.fakeModel") : t("header.localModel")} · {config.knowledgeProvider}
         </span>
       )}
+      <div role="group" aria-label={t("lang.label")} className="ml-auto flex gap-0.5 rounded-[10px] bg-chrome-2 p-0.5 text-xs">
+        {LANGS.map((l) => (
+          <button
+            key={l}
+            type="button"
+            lang={l}
+            aria-pressed={lang === l}
+            onClick={() => setLang(l)}
+            className={`min-h-8 min-w-9 cursor-pointer rounded-lg border-0 px-2 font-semibold ${lang === l ? "bg-brand-soft text-brand" : "bg-transparent text-chrome-muted hover:text-white"}`}
+          >
+            {l === "bg" ? "БГ" : "EN"}
+          </button>
+        ))}
+      </div>
       {me && (
-        <div ref={menuRef} className="relative ml-auto">
+        <div ref={menuRef} className="relative">
           <button
             type="button"
             aria-haspopup="menu"
@@ -92,7 +108,7 @@ export function Header({ me, config, onLogout, active = "none" }: { me?: MeRespo
                 {me.principalId} · {me.customerId}
               </div>
               <a role="menuitem" href="/connections" className="flex min-h-11 items-center rounded-lg px-2.5 !text-ink no-underline hover:bg-panel">
-                Your connections
+                {t("menu.connections")}
               </a>
               <button
                 role="menuitem"
@@ -105,7 +121,7 @@ export function Header({ me, config, onLogout, active = "none" }: { me?: MeRespo
                 }}
                 className="flex min-h-11 w-full cursor-pointer items-center rounded-lg border-0 bg-transparent px-2.5 text-left text-ink hover:bg-panel"
               >
-                Sign out
+                {t("menu.signOut")}
               </button>
             </div>
           )}

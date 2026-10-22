@@ -4,6 +4,8 @@ import { FixtureKnowledgeAdapter, PolicyEnforcingKnowledgeService, type Knowledg
 import { CANARY, ctxFor, memoryWorld } from "./helpers.js";
 
 const SOURCES = ["atlas-project-docs", "company-handbook"];
+/** The all-staff handbook documents (English and Bulgarian). */
+const HANDBOOK = ["office-relocation-faq", "handbook-otpuski-bg"];
 
 async function setup(adapterOverride?: (base: KnowledgeAdapter) => KnowledgeAdapter) {
   const w = await memoryWorld();
@@ -52,7 +54,8 @@ describe("PolicyEnforcingKnowledgeService (fixture adapter)", () => {
     const { svc, seen } = await setup();
     const ev = await svc.search(ctxFor("bob"), { query: "Why was Project Atlas delayed?", limit: 5 });
     expect(ev).toEqual([]);
-    expect(seen.flat().every((id) => id === "office-relocation-faq")).toBe(true);
+    // Only all-staff handbook documents ever reach the adapter for bob.
+    expect(seen.flat().every((id) => HANDBOOK.includes(id))).toBe(true);
   });
 
   it("lets the finance-legal principal see the restricted memo", async () => {
@@ -76,7 +79,7 @@ describe("PolicyEnforcingKnowledgeService (fixture adapter)", () => {
   it("restricts search to the server-provided agent scope", async () => {
     const { svc, seen } = await setup();
     await svc.search(ctxFor("alice"), { query: "office parking", limit: 5, sourceIds: ["company-handbook"] });
-    expect(seen.flat()).toEqual(["office-relocation-faq"]);
+    expect(seen.flat().sort()).toEqual([...HANDBOOK].sort());
     // A scope outside application policy is ignored, not widened.
     const none = await svc.search(ctxFor("alice"), { query: "office parking", limit: 5, sourceIds: ["hr-private"] });
     expect(none).toEqual([]);

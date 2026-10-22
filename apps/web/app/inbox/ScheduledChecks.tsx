@@ -2,16 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkflowView } from "@platform/contracts";
+import { useT, type MessageKey } from "@platform/ui";
 import { api, ApiRequestError } from "../../lib/api";
 import { notifyActionsChanged } from "../../lib/usePendingActions";
 
-const INTERVALS = [
-  { minutes: 15, label: "Every 15 minutes" },
-  { minutes: 60, label: "Every hour" },
-  { minutes: 24 * 60, label: "Every day" },
+const INTERVALS: { minutes: number; label: MessageKey }[] = [
+  { minutes: 15, label: "checks.every15" },
+  { minutes: 60, label: "checks.every60" },
+  { minutes: 24 * 60, label: "checks.every1440" },
 ];
-const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const every = (m: number) => INTERVALS.find((i) => i.minutes === m)?.label.toLowerCase() ?? `every ${m} minutes`;
 
 const RUN_BADGE: Record<string, string> = {
   succeeded: "bg-brand-soft text-brand",
@@ -26,6 +25,11 @@ const RUN_BADGE: Record<string, string> = {
  * approval, never as a direct write.
  */
 export function ScheduledChecks({ onProposals }: { onProposals: () => void }) {
+  const { t, tm, when } = useT();
+  const every = (m: number) => {
+    const i = INTERVALS.find((x) => x.minutes === m);
+    return i ? t(i.label).toLowerCase() : t("checks.everyN", { n: m });
+  };
   const [items, setItems] = useState<WorkflowView[]>();
   const [project, setProject] = useState("ATLAS");
   const [interval, setInterval_] = useState(60);
@@ -60,7 +64,7 @@ export function ScheduledChecks({ onProposals }: { onProposals: () => void }) {
       await fn();
       await load();
     } catch (e) {
-      setError(e instanceof ApiRequestError && e.status === 404 ? "You don't have access to the tracker for this check." : (e as Error).message);
+      setError(e instanceof ApiRequestError && e.status === 404 ? t("checks.noAccess") : (e as Error).message);
     } finally {
       setBusy(undefined);
     }
@@ -69,11 +73,9 @@ export function ScheduledChecks({ onProposals }: { onProposals: () => void }) {
   return (
     <section aria-labelledby="checks-h" className="mt-10">
       <h2 id="checks-h" className="text-[20px] font-bold tracking-tight">
-        Scheduled checks
+        {t("checks.title")}
       </h2>
-      <p className="mt-1 text-muted">
-        Runs in the background with your current access. When a task becomes blocked or at risk, it prepares a comment for your approval above.
-      </p>
+      <p className="mt-1 text-muted">{t("checks.subtitle")}</p>
 
       <form
         className="mt-4 flex flex-wrap items-end gap-3 rounded-[14px] border border-line bg-surface p-4"
@@ -83,7 +85,7 @@ export function ScheduledChecks({ onProposals }: { onProposals: () => void }) {
         }}
       >
         <label className="flex flex-col gap-1 text-sm font-semibold">
-          Tracker project
+          {t("checks.project")}
           <input
             value={project}
             onChange={(e) => setProject(e.target.value.toUpperCase())}
@@ -93,17 +95,17 @@ export function ScheduledChecks({ onProposals }: { onProposals: () => void }) {
           />
         </label>
         <label className="flex flex-col gap-1 text-sm font-semibold">
-          How often
+          {t("checks.howOften")}
           <select value={interval} onChange={(e) => setInterval_(Number(e.target.value))} className="min-h-10 rounded-lg border border-line-strong bg-panel px-3 font-normal">
             {INTERVALS.map((i) => (
               <option key={i.minutes} value={i.minutes}>
-                {i.label}
+                {t(i.label)}
               </option>
             ))}
           </select>
         </label>
         <button type="submit" disabled={busy === "create"} className="min-h-10 cursor-pointer rounded-full bg-brand px-4 text-sm font-semibold text-on-brand disabled:opacity-60">
-          Add check
+          {t("checks.add")}
         </button>
       </form>
 
@@ -113,21 +115,21 @@ export function ScheduledChecks({ onProposals }: { onProposals: () => void }) {
         </p>
       )}
 
-      <ul aria-label="Scheduled checks" className="m-0 mt-4 flex flex-col gap-2 p-0">
-        {items?.length === 0 && <li className="list-none rounded-xl border border-dashed border-line-strong p-4 text-muted">No scheduled checks yet.</li>}
+      <ul aria-label={t("checks.title")} className="m-0 mt-4 flex flex-col gap-2 p-0">
+        {items?.length === 0 && <li className="list-none rounded-xl border border-dashed border-line-strong p-4 text-muted">{t("checks.empty")}</li>}
         {items?.map((w) => {
           const proposals = (w.lastRun?.result?.proposals as unknown[] | undefined)?.length ?? 0;
           return (
             <li key={w.id} className="flex list-none flex-wrap items-center justify-between gap-3 rounded-[14px] border border-line bg-surface px-4 py-3">
               <div className="min-w-0">
-                <p className="font-bold">{w.title}</p>
+                <p className="font-bold">{w.kind === "tracker-status-check" ? t("checks.kindTitle", { project: String(w.config.project ?? "").toUpperCase() }) : w.title}</p>
                 <p className="text-[13px] text-muted">
-                  {w.enabled ? `Runs ${every(w.intervalMinutes)} · next ${when(w.nextRunAt)}` : "Paused"}
+                  {w.enabled ? t("checks.runs", { every: every(w.intervalMinutes), when: when(w.nextRunAt) }) : t("checks.paused")}
                   {w.lastRun && (
                     <>
-                      {" · last run "}
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${RUN_BADGE[w.lastRun.status] ?? RUN_BADGE.pending}`}>{w.lastRun.status}</span>
-                      {w.lastRun.status === "succeeded" && ` · ${proposals} new ${proposals === 1 ? "proposal" : "proposals"}`}
+                      {t("checks.lastRun")}
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${RUN_BADGE[w.lastRun.status] ?? RUN_BADGE.pending}`}>{tm(`run.${w.lastRun.status}`, w.lastRun.status)}</span>
+                      {w.lastRun.status === "succeeded" && (proposals === 1 ? t("checks.newProposal1") : t("checks.newProposalN", { n: proposals }))}
                       {w.lastRun.error && ` · ${w.lastRun.error}`}
                     </>
                   )}
@@ -140,7 +142,7 @@ export function ScheduledChecks({ onProposals }: { onProposals: () => void }) {
                   onClick={() => void act(w.id, () => api(`/api/workflows/${w.id}/run-now`, { method: "POST" }))}
                   className="min-h-10 cursor-pointer rounded-full border border-line-strong px-3.5 text-sm font-semibold hover:bg-panel disabled:opacity-60"
                 >
-                  Run now
+                  {t("checks.runNow")}
                 </button>
                 <button
                   type="button"
@@ -148,7 +150,7 @@ export function ScheduledChecks({ onProposals }: { onProposals: () => void }) {
                   onClick={() => void act(w.id, () => api(`/api/workflows/${w.id}/${w.enabled ? "pause" : "resume"}`, { method: "POST" }))}
                   className="min-h-10 cursor-pointer rounded-full border border-line-strong px-3.5 text-sm font-semibold hover:bg-panel disabled:opacity-60"
                 >
-                  {w.enabled ? "Pause" : "Resume"}
+                  {w.enabled ? t("checks.pause") : t("checks.resume")}
                 </button>
               </div>
             </li>

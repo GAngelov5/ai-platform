@@ -494,6 +494,36 @@ describe("second agent and scheduled workflows (Stage 3c)", () => {
   });
 });
 
+describe("Bulgarian documents and questions", () => {
+  it("answers a Bulgarian question in Bulgarian, citing the Bulgarian document", async () => {
+    const alice = await as("alice");
+    const { answer } = await ask(alice, "Защо се забави проектът Атлас?");
+    expect(answer.status).toBe("answered");
+    expect(answer.content).toMatch(/^Според цитираните източници:/);
+    // Matches "проектът"/"Атлас". Verb forms (забави / забавено) are beyond the light stemmer; real models and semantic scoring cover them.
+    expect(answer.content).toContain("Проектът Атлас е в жълт статус");
+    expect(answer.citations.map((c: { documentId?: string }) => c.documentId)).toContain("atlas-status-bg");
+  });
+
+  it("keeps permissions in Bulgarian: the denied principal gets the Bulgarian refusal and nothing about Atlas", async () => {
+    const bob = await as("bob");
+    const { answer } = await ask(bob, "Защо се забави проектът Атлас?");
+    expect(answer.status).toBe("insufficient_evidence");
+    expect(answer.content).toMatch(/^Не намерих достатъчно информация/);
+    expect(JSON.stringify(answer)).not.toMatch(/Атлас – седмичен|Northwind|atlas-status/);
+    const leave = await ask(bob, "Колко дни платен годишен отпуск имат служителите?");
+    expect(leave.answer.status).toBe("answered");
+    expect(leave.answer.content).toContain("20 работни дни");
+    expect(leave.answer.citations.map((c: { documentId?: string }) => c.documentId)).toContain("handbook-otpuski-bg");
+  });
+
+  it("finds Bulgarian documents through search", async () => {
+    const alice = await as("alice");
+    const r = await alice.req("POST", "/api/knowledge/search", { query: "блокер сертифициране Northwind", limit: 5 });
+    expect(r.json.evidence[0]).toMatchObject({ documentId: "atlas-status-bg" });
+  });
+});
+
 describe("admin console (ADR 0012)", () => {
   const ROUTES = ["overview", "sources", "sources/team-share/quarantine", "integrations", "agents", "actions", "workflows", "audit"];
 

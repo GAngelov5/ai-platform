@@ -186,6 +186,8 @@ export const AgentSummarySchema = z.strictObject({
   version: z.string(),
   name: z.string(),
   description: z.string(),
+  /** Display name and description per UI language, e.g. { bg: { name, description } }. */
+  localized: z.record(z.string(), z.strictObject({ name: z.string(), description: z.string() })).optional(),
 });
 export type AgentSummary = z.infer<typeof AgentSummarySchema>;
 

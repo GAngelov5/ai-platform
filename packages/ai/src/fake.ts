@@ -1,4 +1,4 @@
-import { splitSentences, terms } from "@platform/knowledge";
+import { detectLanguage, splitSentences, terms } from "@platform/knowledge";
 import type { GenerateRequest, GenerateResult, ModelGateway, ModelTool } from "./gateway.js";
 
 export const INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE";
@@ -106,7 +106,8 @@ export class FakeModelGateway implements ModelGateway {
     if (proposal?.proposalId) {
       lines.push(`- I prepared a proposal: ${proposal.operation}. It has NOT been executed; approve or reject it in the approval card.`);
     }
-    const text = lines.length ? `Based on the cited sources:\n${lines.join("\n")}` : INSUFFICIENT_EVIDENCE;
+    const intro = detectLanguage(question) === "bg" ? "Според цитираните източници:" : "Based on the cited sources:";
+    const text = lines.length ? `${intro}\n${lines.join("\n")}` : INSUFFICIENT_EVIDENCE;
     return {
       text,
       finishReason: "stop",

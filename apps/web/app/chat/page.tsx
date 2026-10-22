@@ -11,7 +11,7 @@ import type {
   RunEvent,
   ToolCallSummary,
 } from "@platform/contracts";
-import { AgentCard, ApprovalCard, ContextPanel, RunStatus, type ConnectionSummary } from "@platform/ui";
+import { AgentCard, ApprovalCard, ContextPanel, RunStatus, useT, type ConnectionSummary, type Translate } from "@platform/ui";
 import { api, apiStream } from "../../lib/api";
 import { notifyActionsChanged } from "../../lib/usePendingActions";
 import { useSession } from "../../lib/useSession";
@@ -25,20 +25,18 @@ interface Capability {
 
 const docHref = (c: Citation) => (c.kind === "live" ? undefined : `/documents/${encodeURIComponent(c.documentId)}#${encodeURIComponent(c.chunkId)}`);
 const TERMINAL = new Set(["succeeded", "failed", "unknown", "rejected", "expired", "cancelled"]);
-const CONNECTOR_NAMES: Record<string, string> = { "atlas-tracker": "Atlas tracker" };
-
 /** Turns the user's allowed capabilities into the "Connections in use" list. */
-function summarizeConnections(caps: Capability[]): ConnectionSummary[] {
+function summarizeConnections(caps: Capability[], t: Translate, tm: (k: string, f: string) => string): ConnectionSummary[] {
   const out: ConnectionSummary[] = [];
-  if (caps.some((c) => c.id === "knowledge.search")) out.push({ name: "Company documents", access: "search" });
+  if (caps.some((c) => c.id === "knowledge.search")) out.push({ name: t("chat.companyDocuments"), access: t("chat.access.search") });
   const byConnector = new Map<string, Capability[]>();
   for (const c of caps) if (c.connectorId) byConnector.set(c.connectorId, [...(byConnector.get(c.connectorId) ?? []), c]);
   for (const [id, list] of byConnector) {
     const reads = list.some((c) => c.kind === "read");
     const writes = list.some((c) => c.kind === "write");
-    out.push({ name: CONNECTOR_NAMES[id] ?? id, access: [reads && "read", writes && "writes need approval"].filter(Boolean).join(" · ") });
+    out.push({ name: tm(`connector.${id}`, id), access: [reads && t("chat.access.read"), writes && t("chat.access.writes")].filter(Boolean).join(" · ") });
   }
-  out.push({ name: "Microsoft 365", access: "not available yet", href: "/connections", actionLabel: "Not available yet" });
+  out.push({ name: "Microsoft 365", access: t("chat.notAvailable"), href: "/connections", actionLabel: t("chat.notAvailableTitle") });
   return out;
 }
 
@@ -62,16 +60,9 @@ function AnswerText({ message }: { message: Message }) {
   );
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  insufficient_evidence: "Not enough evidence",
-  limit_reached: "Stopped at a limit",
-  withheld: "Withheld",
-  action_proposed: "Needs your approval",
-  error: "Something went wrong",
-};
-
 export default function ChatPage() {
   const { me, config, refresh } = useSession();
+  const { t, tm } = useT();
   const [agentId, setAgentId] = useState("project-assistant");
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [caps, setCaps] = useState<Capability[]>([]);
@@ -129,12 +120,12 @@ export default function ChatPage() {
     void api<AgentSummary[]>("/api/agents").then(setAgents, () => {});
     void api<Capability[]>("/api/capabilities").then(setCaps, () => {});
     const c = params.get("c");
-    if (c) void open(c).catch(() => setError("That conversation isn't available."));
+    if (c) void open(c).catch(() => setError(t("chat.unavailable")));
   }, [me, loadList, open]);
 
   const assistantMessages = (current?.messages ?? []).filter((m) => m.role === "assistant");
   const focus = assistantMessages.find((m) => m.id === selected) ?? [...assistantMessages].reverse().find((m) => m.citations.length) ?? assistantMessages.at(-1);
-  const connections = useMemo(() => summarizeConnections(caps), [caps]);
+  const connections = useMemo(() => summarizeConnections(caps, t, tm), [caps, t, tm]);
 
   const poll = async (id: string) => {
     for (let i = 0; i < 60; i++) {
@@ -211,7 +202,7 @@ export default function ChatPage() {
       );
       await loadList();
     } catch (e) {
-      setError((e as Error).name === "AbortError" ? "Cancelled. The run was stopped." : (e as Error).message);
+      setError((e as Error).name === "AbortError" ? t("chat.cancelled") : (e as Error).message);
       if ((e as Error).name !== "AbortError" && current) void open(current.id).catch(() => {});
     } finally {
       setBusy(false);
@@ -223,7 +214,7 @@ export default function ChatPage() {
     <>
       <Header me={me} config={config} onLogout={refresh} active="assistants" />
       <div className="flex flex-wrap items-stretch">
-        <aside aria-label="Assistants and history" className="min-h-[calc(100vh-56px)] max-w-[264px] min-w-[220px] flex-[1_1_240px] border-r border-line bg-panel px-4 py-5">
+        <aside aria-label={t("chat.sidebar")} className="min-h-[calc(100vh-56px)] max-w-[264px] min-w-[220px] flex-[1_1_240px] border-r border-line bg-panel px-4 py-5">
           <button
             type="button"
             onClick={() => {
@@ -233,13 +224,13 @@ export default function ChatPage() {
             }}
             className="min-h-11 w-full cursor-pointer rounded-[10px] border-0 bg-brand font-semibold text-on-brand hover:bg-brand-hover"
           >
-            New conversation
+            {t("chat.newConversation")}
           </button>
-          <p className="mt-6 mb-2 text-xs font-semibold text-muted">Assistants</p>
+          <p className="mt-6 mb-2 text-xs font-semibold text-muted">{t("chat.assistants")}</p>
           {agents.map((a) => (
             <AgentCard key={a.id} agent={a} href={`/chat?agent=${encodeURIComponent(a.id)}`} active={a.id === agentId} />
           ))}
-          <p className="mt-6 mb-2 text-xs font-semibold text-muted">Recent</p>
+          <p className="mt-6 mb-2 text-xs font-semibold text-muted">{t("chat.recent")}</p>
           <ul className="m-0 flex flex-col gap-0.5 p-0 text-[13.5px]">
             {conversations.map((c) => (
               <li key={c.id} className="list-none">
@@ -257,14 +248,14 @@ export default function ChatPage() {
         </aside>
 
         <main className="flex min-w-0 flex-[999_1_560px] flex-col gap-5 p-8">
-          <h1 className="sr-only">Project assistant</h1>
+          <h1 className="sr-only">{t("chat.srTitle")}</h1>
           {!current?.messages.length && !busy && (
             <div className="max-w-[760px] rounded-[16px] border border-dashed border-line-strong p-6 text-ink-2">
-              <p className="font-semibold">Ask about a project, or ask for a change.</p>
+              <p className="font-semibold">{t("chat.emptyTitle")}</p>
               <ul className="mt-2 list-disc pl-5 text-[13.5px] text-muted">
-                <li>Why was Project Atlas delayed?</li>
-                <li>What is the current status of the Atlas customer data migration?</li>
-                <li>Add a comment to ATLAS-180 saying &quot;Readiness review moved to 3 November&quot;</li>
+                <li>{t("chat.example1")}</li>
+                <li>{t("chat.example2")}</li>
+                <li>{t("chat.example3")}</li>
               </ul>
             </div>
           )}
@@ -279,8 +270,8 @@ export default function ChatPage() {
                   <article
                     className={`max-w-[760px] rounded-[16px] border bg-surface px-[22px] py-5 ${focus?.id === m.id ? "border-line-strong" : "border-line"}`}
                   >
-                    <RunStatus calls={m.toolCalls ?? []} model={m.model ? `${m.model.name}${m.model.provider.startsWith("fake") ? " (fake)" : ", local"}` : undefined} />
-                    {m.status && m.status !== "answered" && <p className="mb-2 text-xs font-bold text-warn-ink">{STATUS_LABEL[m.status] ?? m.status}</p>}
+                    <RunStatus calls={m.toolCalls ?? []} model={m.model ? `${m.model.name}${m.model.provider.startsWith("fake") ? t("chat.modelFake") : t("chat.modelLocal")}` : undefined} />
+                    {m.status && m.status !== "answered" && <p className="mb-2 text-xs font-bold text-warn-ink">{tm(`status.${m.status}`, m.status)}</p>}
                     <AnswerText message={m} />
                     {(m.proposalIds ?? []).map((id) =>
                       proposals[id] ? (
@@ -289,7 +280,7 @@ export default function ChatPage() {
                     )}
                     {m.citations.length > 0 && focus?.id !== m.id && (
                       <button type="button" onClick={() => setSelected(m.id)} className="mt-3 cursor-pointer border-0 bg-transparent p-0 text-[13px] font-semibold text-brand">
-                        Show its {m.citations.length} sources
+                        {t("chat.showSources", { n: m.citations.length })}
                       </button>
                     )}
                   </article>
@@ -300,12 +291,12 @@ export default function ChatPage() {
           {busy && (
             <div className="max-w-[760px] rounded-[16px] border border-dashed border-line-strong px-[22px] py-4" role="status">
               <RunStatus calls={live} running />
-              <p className="text-[13.5px] text-muted">Checking documents and live systems…</p>
+              <p className="text-[13.5px] text-muted">{t("chat.working")}</p>
             </div>
           )}
           {resuming && !busy && (
             <div className="max-w-[760px] rounded-[16px] border border-dashed border-line-strong px-[22px] py-4" role="status">
-              <p className="text-[13.5px] text-muted">Still answering your last question. The answer will appear here.</p>
+              <p className="text-[13.5px] text-muted">{t("chat.resuming")}</p>
             </div>
           )}
 
@@ -317,14 +308,14 @@ export default function ChatPage() {
             }}
           >
             <label htmlFor="q" className="sr-only">
-              Question
+              {t("chat.question")}
             </label>
             <input
               id="q"
               value={draft}
               maxLength={4000}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="Ask about a project, or ask for a change"
+              placeholder={t("chat.placeholder")}
               disabled={busy || resuming}
               className="min-h-[46px] flex-1 rounded-xl border border-line-strong bg-surface px-3.5 text-ink placeholder:text-muted"
             />
@@ -338,11 +329,11 @@ export default function ChatPage() {
                 }}
                 className="min-h-[46px] cursor-pointer rounded-xl border border-line-strong bg-transparent px-5"
               >
-                Cancel
+                {t("chat.cancel")}
               </button>
             ) : (
               <button type="submit" disabled={!draft.trim()} className="min-h-[46px] cursor-pointer rounded-xl border-0 bg-brand px-5 font-bold text-on-brand hover:bg-brand-hover disabled:opacity-50">
-                Ask
+                {t("chat.ask")}
               </button>
             )}
           </form>

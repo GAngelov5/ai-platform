@@ -224,6 +224,19 @@ Sign in as **Dana** (operator: `admin` role, all-staff documents only). An
 | 10.7 | Dana | Ask the Project Assistant "Why was Project Atlas delayed?" | Not enough evidence: admin rights give **no** document access. |
 | 10.8 | Alice | Open `/admin`, or call `/api/admin/overview` | No Admin link; the API returns 404. As Dana, Audit shows the denied `admin.access`. |
 
+## 11. Bulgarian
+
+| # | User | Do | Expect |
+|---|---|---|---|
+| 11.1 | Any | Click **БГ** in the header (also on the sign-in page) | The whole UI is in Bulgarian, in the same font. Agent names are "Проектен асистент" and "Подготовка за срещи". The choice persists after a reload; **EN** switches back. |
+| 11.2 | Bob or Dana | Ask "Колко дни платен годишен отпуск имат служителите?" | An answer in Bulgarian ("20 работни дни"), citing "Политика за отпуските". Dates in Bulgarian format. |
+| 11.3 | Alice | Ask "Защо се забави проектът Атлас?" | An answer in Bulgarian citing "Атлас – седмичен статус". |
+| 11.4 | Bob | Ask "Защо се забави проектът Атлас?" | The Bulgarian refusal ("Не намерих достатъчно информация…"), with nothing about Atlas. |
+| 11.5 | Any | Ask in English with the UI in Bulgarian | The answer is in English: answers follow the question's language, not the UI's. |
+
+Note: with the real CPU model, Bulgarian answer quality is not yet
+evaluated (ADR 0013).
+
 ## What you can't test yet (and why)
 
 | Area | Blocked on |

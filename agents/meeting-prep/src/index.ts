@@ -10,6 +10,12 @@ export const meetingPrep = defineAgent({
   version: "0.1.0",
   name: "Meeting Preparation Assistant",
   description: "Prepares a short briefing for your next meeting from your calendar, authorized documents and the live tracker.",
+  localized: {
+    bg: {
+      name: "Подготовка за срещи",
+      description: "Подготвя кратък брифинг за следващата ви среща от календара ви, документите, до които имате достъп, и тракера в реално време.",
+    },
+  },
   instructions: `You are the Meeting Preparation Assistant for this company.
 First find the user's next meeting (or the one they name) in their calendar.
 Then, for each agenda item, look up relevant decisions, history and figures in the documents, and current task status in the tracker when a task key is mentioned.

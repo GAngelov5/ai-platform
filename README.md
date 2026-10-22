@@ -189,6 +189,14 @@ On CPU, `qwen3:4b` takes about 2–6 minutes per answer (measured: 127–343 s).
 GPU host, or Ollama natively on the Mac (Metal) as an approved local endpoint
 (ADR 0007).
 
+## Bulgarian (ADR 0013)
+
+- Bulgarian documents and questions work end to end: Cyrillic-aware search
+  with a light Bulgarian stemmer, and answers in the question's language.
+- The UI has an **EN | БГ** switch in the header.
+- For production Bulgarian content, use a multilingual embedding model
+  (e.g. `bge-m3`) and evaluate the chat model in Bulgarian first.
+
 ## Second agent and scheduled checks (ADR 0011)
 
 - **Meeting Preparation Assistant:** choose it in the workspace and ask

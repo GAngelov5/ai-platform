@@ -1,5 +1,6 @@
 import type { Citation } from "@platform/contracts";
 import { SourceCitation } from "./SourceCitation.js";
+import { useT } from "./i18n.js";
 
 export interface ConnectionSummary {
   name: string;
@@ -20,9 +21,10 @@ export interface ContextPanelProps {
 
 /** "Context for this answer": the sources the answer used and the connections available to the user. */
 export function ContextPanel({ citations, connections, documentHref, manageHref, prompt }: ContextPanelProps) {
+  const { t } = useT();
   return (
-    <aside aria-label="Context for this answer" className="flex flex-col gap-3.5">
-      <h2 className="text-[13px] font-bold text-ink-2">Context for this answer</h2>
+    <aside aria-label={t("context.title")} className="flex flex-col gap-3.5">
+      <h2 className="text-[13px] font-bold text-ink-2">{t("context.title")}</h2>
       {citations.length ? (
         <ol className="m-0 flex flex-col gap-2.5 p-0">
           {citations.map((c, i) => (
@@ -30,13 +32,13 @@ export function ContextPanel({ citations, connections, documentHref, manageHref,
           ))}
         </ol>
       ) : (
-        <p className="text-[13px] text-muted">Sources appear here when an answer cites them.</p>
+        <p className="text-[13px] text-muted">{t("context.empty")}</p>
       )}
       <div className="border-t border-line pt-3.5">
         <div className="mb-2 flex items-baseline justify-between">
-          <span className="text-[13px] font-bold text-ink-2">Connections in use</span>
+          <span className="text-[13px] font-bold text-ink-2">{t("context.connections")}</span>
           <a href={manageHref} className="text-[13px]">
-            Manage
+            {t("context.manage")}
           </a>
         </div>
         <ul className="m-0 flex list-none flex-col gap-2 p-0 text-[13px]">

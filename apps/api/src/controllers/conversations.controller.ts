@@ -51,7 +51,7 @@ export class ConversationsController {
 
   @Get("agents")
   agents(): AgentSummary[] {
-    return this.deps.agents.list().map((a) => ({ id: a.id, version: a.version, name: a.name, description: a.description }));
+    return this.deps.agents.list().map((a) => ({ id: a.id, version: a.version, name: a.name, description: a.description, ...(a.localized ? { localized: a.localized } : {}) }));
   }
 
   @Post("conversations")

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { DevPrincipal } from "@platform/contracts";
+import { useT } from "@platform/ui";
 import { api } from "../lib/api";
 import { useSession } from "../lib/useSession";
 import { Header } from "./Header";
@@ -9,6 +10,7 @@ import { Header } from "./Header";
 /** Signed out: development sign-in. Signed in: go to the workspace. */
 export default function Home() {
   const { me, config, refresh } = useSession();
+  const { t } = useT();
   const [principals, setPrincipals] = useState<DevPrincipal[] | null>(null);
   const [error, setError] = useState<string>();
 
@@ -21,17 +23,17 @@ export default function Home() {
     <>
       <Header me={me} config={config} onLogout={refresh} />
       <main className="mx-auto max-w-4xl px-6 py-12">
-        {me !== null && <p className="text-muted">Loading…</p>}
+        {me !== null && <p className="text-muted">{t("common.loading")}</p>}
         {me === null && (
           <section aria-labelledby="signin">
             <h1 id="signin" className="text-[26px] font-bold tracking-tight">
-              Sign in
+              {t("login.title")}
             </h1>
-            {principals === null && <p className="mt-2 text-muted">Loading…</p>}
-            {principals?.length === 0 && <p className="mt-2 text-muted">Development sign-in is disabled. Customer single sign-on isn't available in this milestone.</p>}
+            {principals === null && <p className="mt-2 text-muted">{t("common.loading")}</p>}
+            {principals?.length === 0 && <p className="mt-2 text-muted">{t("login.disabled")}</p>}
             {principals && principals.length > 0 && (
               <>
-                <p className="mt-2 text-warn-ink">Synthetic development identities only. Production rejects this sign-in method.</p>
+                <p className="mt-2 text-warn-ink">{t("login.synthetic")}</p>
                 <ul className="mt-6 grid gap-3 p-0 sm:grid-cols-3">
                   {principals.map((p) => (
                     <li key={p.principalId} className="list-none">
