@@ -122,6 +122,21 @@ export class TrackerStore {
     return p;
   }
 
+  /** Synthetic test hook: changes the live status (as a person in the tracker would). */
+  setStatus(key: string, status: TrackerTask["status"]): Promise<TrackerTask | undefined> {
+    const run = async () => {
+      const task = this.get(key);
+      if (!task) return undefined;
+      task.status = status;
+      task.updatedAt = new Date().toISOString();
+      await this.persist();
+      return task;
+    };
+    const p = this.chain.then(run, run);
+    this.chain = p.catch(() => {});
+    return p;
+  }
+
   findComment(key: string, idempotencyKey: string): TrackerComment | undefined {
     return this.get(key)?.comments.find((c) => c.idempotencyKey === idempotencyKey);
   }

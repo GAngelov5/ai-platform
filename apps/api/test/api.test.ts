@@ -386,6 +386,46 @@ describe("ingested folder source (team-share)", () => {
   });
 });
 
+describe("second agent and scheduled workflows (Stage 3c)", () => {
+  it("lists both agents and starts a Meeting Preparation conversation", async () => {
+    const alice = await as("alice");
+    const agents = await alice.req("GET", "/api/agents");
+    expect(agents.json.map((a: { id: string }) => a.id).sort()).toEqual(["meeting-prep", "project-assistant"]);
+    expect((await alice.req("POST", "/api/conversations", { agentId: "meeting-prep" })).status).toBe(201);
+  });
+
+  it("creates, runs and controls a workflow only for its owner; its writes wait for approval", async () => {
+    const alice = await as("alice");
+    const bob = await as("bob");
+    const body = { kind: "tracker-status-check", config: { project: "ATLAS" }, intervalMinutes: 60 };
+    expect((await alice.req("GET", "/api/workflow-kinds")).json.map((k: { kind: string }) => k.kind)).toContain("tracker-status-check");
+    expect((await alice.req("POST", "/api/workflows", body, {}, { csrf: false })).status).toBe(403);
+    expect((await bob.req("POST", "/api/workflows", body)).status).toBe(404); // bob lacks the tracker capabilities
+    expect((await alice.req("POST", "/api/workflows", { ...body, config: { project: "x/../y" } })).status).toBe(400);
+    expect((await alice.req("POST", "/api/workflows", { ...body, intervalMinutes: 1 })).status).toBe(400);
+
+    const created = await alice.req("POST", "/api/workflows", body);
+    expect(created.status).toBe(201);
+    const id = created.json.id as string;
+    expect((await bob.req("GET", `/api/workflows/${id}/runs`)).status).toBe(404);
+    expect((await bob.req("GET", "/api/workflows")).json).toEqual([]);
+
+    await deps.workflows.tick(); // what the worker does every minute
+    const runs = await alice.req("GET", `/api/workflows/${id}/runs`);
+    expect(runs.json[0]).toMatchObject({ status: "succeeded", result: { project: "ATLAS", proposals: [{ taskKey: "ATLAS-180" }] } });
+    const proposalId = runs.json[0].result.proposals[0].proposalId as string;
+    const p = await alice.req("GET", `/api/actions/${proposalId}`);
+    expect(p.json).toMatchObject({ state: "pending_approval", capabilityId: "tracker.task.comment" });
+    expect((await bob.req("GET", `/api/actions/${proposalId}`)).status).toBe(404);
+
+    expect((await alice.req("POST", `/api/workflows/${id}/pause`)).json.enabled).toBe(false);
+    expect((await alice.req("POST", `/api/workflows/${id}/run-now`)).json.enabled).toBe(true);
+    expect((await bob.req("POST", `/api/workflows/${id}/pause`)).status).toBe(404);
+    const list = await alice.req("GET", "/api/workflows");
+    expect(list.json[0]).toMatchObject({ id, title: "Tracker status check · ATLAS", lastRun: { status: "succeeded" } });
+  });
+});
+
 describe("development authentication switch", () => {
   it("is unavailable when DEV_AUTH_ENABLED is false", async () => {
     const off = await boot({ DEV_AUTH_ENABLED: "false" });

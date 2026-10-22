@@ -1,0 +1,33 @@
+{
+  "name": "@platform/agent-meeting-prep",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "@platform/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./evals/questions.json": "./evals/questions.json"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@platform/agents": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3",
+    "@platform/ai": "workspace:*",
+    "@platform/knowledge": "workspace:*",
+    "@platform/security": "workspace:*",
+    "@platform/agents": "workspace:*",
+    "@platform/connectors": "workspace:*",
+    "@platform/mcp-atlas-tracker": "workspace:*"
+  }
+}

@@ -7,6 +7,7 @@ import { api } from "../../lib/api";
 import { notifyActionsChanged, useActions } from "../../lib/usePendingActions";
 import { useSession } from "../../lib/useSession";
 import { Header } from "../Header";
+import { ScheduledChecks } from "./ScheduledChecks";
 
 type Filter = "all" | "waiting" | "attention" | "done";
 
@@ -169,6 +170,7 @@ export default function InboxPage() {
             {error}
           </p>
         )}
+        {me && <ScheduledChecks onProposals={() => void reload()} />}
       </div>
     </>
   );

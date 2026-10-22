@@ -170,7 +170,7 @@ tracker and the real model. It needs the same 6 vCPU / 10 GiB VM. The first
 run pulls `qwen3:4b` (about 2.5 GB).
 
 ```bash
-export POSTGRES_PASSWORD=platform_dev LIGHTRAG_API_KEY=dev-lightrag-key-0123456789 MCP_TOKEN_ATLAS_TRACKER=dev-tracker-token-0123456789abcd
+export POSTGRES_PASSWORD=platform_dev LIGHTRAG_API_KEY=dev-lightrag-key-0123456789 MCP_TOKEN_ATLAS_TRACKER=dev-tracker-token-0123456789abcd MCP_TOKEN_CALENDAR=dev-calendar-token-0123456789abcd
 C="docker compose -f infra/compose/compose.yaml -f infra/compose/compose.dev.yaml -f infra/compose/lightrag/compose.lightrag.yaml -f infra/compose/integrations/compose.integrations.yaml"
 $C build && $C up -d
 $C --profile seed run --rm seed && $C --profile lightrag-sync run --rm lightrag-sync
@@ -188,6 +188,18 @@ As **Bob**, the tracker tools are never offered.
 On CPU, `qwen3:4b` takes about 2–6 minutes per answer (measured: 127–343 s). For interactive speed, use a
 GPU host, or Ollama natively on the Mac (Metal) as an approved local endpoint
 (ADR 0007).
+
+## Second agent and scheduled checks (ADR 0011)
+
+- **Meeting Preparation Assistant:** choose it in the workspace and ask
+  "Prepare me for my next meeting." It reads *your* calendar (synthetic
+  calendar MCP at `/calendar/mcp`), the documents you may read, and live
+  tracker status. It cannot propose writes.
+- **Scheduled checks:** Inbox → Scheduled checks. A tracker status check runs
+  in the worker with your current access. When a task becomes blocked or at
+  risk, it proposes one comment for your approval.
+- Live check: `SMOKE_INSECURE_TLS=1 WITH_MODEL=1 node scripts/stage3c-live-check.mjs`.
+- Manual test steps for every stage: [docs/MANUAL-TESTING.md](docs/MANUAL-TESTING.md).
 
 ## Quick start B — local dev servers (hot reload)
 
@@ -283,8 +295,9 @@ indexing, and resource usage (ADR 0003).
 
 ## Not done / next gate
 
-Not implemented: OIDC, streaming, Microsoft Graph, MCP, actions/approvals,
-workflows, the second agent, Playwright tests, backups. Those are later phases.
+Not implemented yet: OIDC, Microsoft Graph (Stage 2), the admin console, OCR,
+Playwright tests, backups and restore drills. Those are later stages; see
+[docs/ROADMAP.md](docs/ROADMAP.md).
 **Gate status:** source permission changes and deletion handling are proven
 against the real, pinned **LightRAG** backend on synthetic data (ADR 0006).
 The selection evaluation (ADR 0010, `docs/eval/`) runs over 110 synthetic

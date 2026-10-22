@@ -12,6 +12,11 @@ services:
   valkey:
     ports: ["127.0.0.1:6379:6379"]
     networks: [backend, devhost]
+  # Dev only: the worker reads the synthetic source folders from the host
+  # (read-only), so edits under fixtures/sources are ingested without an image
+  # rebuild (docs/MANUAL-TESTING.md). In production, sources are real systems.
+  worker:
+    volumes: ["../../fixtures/sources:/repo/fixtures/sources:ro"]
   # One-shot synthetic seed (never in production: the command refuses APP_ENV=production).
   seed:
     image: ai-platform/worker:${IMAGE_TAG:-dev}

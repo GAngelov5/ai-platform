@@ -271,6 +271,8 @@ export const actionProposals = pgTable(
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     payloadHash: text("payload_hash").notNull(),
     idempotencyKey: uuid("idempotency_key").notNull(),
+    /** Set by automated proposers (workflows): one proposal per logical write, however often it is retried. */
+    dedupeKey: text("dedupe_key"),
     policyVersion: text("policy_version").notNull(),
     state: text("state").$type<ActionStateValue>().notNull(),
     attempts: integer("attempts").notNull().default(0),
@@ -284,6 +286,7 @@ export const actionProposals = pgTable(
   },
   (t) => [
     uniqueIndex("action_proposals_idem_uq").on(t.idempotencyKey),
+    uniqueIndex("action_proposals_dedupe_uq").on(t.customerId, t.dedupeKey),
     index("action_proposals_owner_idx").on(t.customerId, t.principalId, t.createdAt),
   ],
 );
@@ -387,4 +390,47 @@ export const sourceQuarantine = pgTable(
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.customerId, t.sourceId, t.externalId] })],
+);
+
+export type WorkflowRunStatus = "pending" | "running" | "succeeded" | "failed";
+
+/** A user's scheduled workflow (ADR 0011). State lives here; BullMQ only triggers dispatch. */
+export const workflows = pgTable(
+  "workflows",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    customerId: text("customer_id").notNull(),
+    /** Owner: every run executes with this principal's current permissions. */
+    principalId: text("principal_id").notNull(),
+    kind: text("kind").notNull(),
+    kindVersion: text("kind_version").notNull(),
+    config: jsonb("config").$type<Record<string, unknown>>().notNull(),
+    intervalMinutes: integer("interval_minutes").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    nextRunAt: ts("next_run_at").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("workflows_due_idx").on(t.enabled, t.nextRunAt), index("workflows_owner_idx").on(t.customerId, t.principalId)],
+);
+
+/** One row per scheduled slot: the unique key makes duplicate dispatch and redelivery harmless. */
+export const workflowRuns = pgTable(
+  "workflow_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workflowId: uuid("workflow_id").notNull().references(() => workflows.id, { onDelete: "cascade" }),
+    customerId: text("customer_id").notNull(),
+    scheduledFor: ts("scheduled_for").notNull(),
+    status: text("status").$type<WorkflowRunStatus>().notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    /** Set when claimed; a run still "running" long after this is taken over. */
+    heartbeatAt: ts("heartbeat_at"),
+    startedAt: ts("started_at"),
+    finishedAt: ts("finished_at"),
+    result: jsonb("result").$type<Record<string, unknown>>(),
+    error: text("error"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("workflow_runs_slot_uq").on(t.workflowId, t.scheduledFor), index("workflow_runs_status_idx").on(t.status, t.createdAt)],
 );

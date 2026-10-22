@@ -2,6 +2,7 @@ import { buildIntegrations, type ActionService } from "@platform/actions";
 import { AgentRegistry, type CapabilityRegistry } from "@platform/agents";
 import type { ConnectorRegistry } from "@platform/connectors";
 import { AgentRuntime, FakeModelGateway, OpenAICompatibleGateway, type ModelGateway } from "@platform/ai";
+import { meetingPrep } from "@platform/agent-meeting-prep";
 import { projectAssistant } from "@platform/agent-project-assistant";
 import { createRepositories, type Database, type Repositories } from "@platform/database";
 import {
@@ -17,6 +18,7 @@ import {
   type KnowledgeAdapter,
 } from "@platform/knowledge";
 import { mcpTokenVar, type PlatformConfig } from "@platform/security";
+import { WorkflowService } from "@platform/workflows";
 import { fileURLToPath } from "node:url";
 import type { Logger } from "./logger.js";
 
@@ -39,6 +41,7 @@ export interface PlatformDeps {
   actions: ActionService;
   capabilities: CapabilityRegistry;
   connectors: ConnectorRegistry;
+  workflows: WorkflowService;
 }
 
 /** Chunks of exactly the catalogued version, from the platform content store (ADR 0009). */
@@ -121,7 +124,7 @@ export async function buildDeps(input: {
     },
   });
   const model = input.model ?? createModelGateway(config);
-  const agents = new AgentRegistry([projectAssistant]);
+  const agents = new AgentRegistry([projectAssistant, meetingPrep]);
   const securityEvent = (type: string, detail: Record<string, unknown>) => {
     logger.warn({ securityEvent: type, ...detail }, "security event");
     void repos.audit.write({ customerId: config.customerId, action: type, outcome: "denied", detail }).catch(() => {});
@@ -146,5 +149,7 @@ export async function buildDeps(input: {
     liveEvidence: repos.liveEvidence,
     actions,
   });
-  return { config, repos, knowledge, agents, runtime, model, logger, pingDatabase: input.pingDatabase, actions, capabilities, connectors };
+  // The API creates and lists workflows; the worker dispatches and executes them.
+  const workflows = new WorkflowService({ db, capabilities, actions, principals: repos.principals, audit: repos.audit, policyVersion: config.policyVersion });
+  return { config, repos, knowledge, agents, runtime, model, logger, pingDatabase: input.pingDatabase, actions, capabilities, connectors, workflows };
 }

@@ -9,11 +9,14 @@ interface ProposalResult { proposalId?: string; operation?: string; state?: stri
 
 const LIVE_INTENT = /\b(current|currently|now|today|latest|live|status|right now)\b/i;
 const COMMENT_INTENT = /\b(add|post|leave|write)\b[^.?!]*\bcomment\b/i;
+const MEETING_INTENT = /\b(meeting|meetings|prepare|prep|briefing)\b/i;
 
 /**
  * Deterministic stand-in for a tool-calling model. It never calls the network.
  * It follows a fixed, inspectable policy so the router, guards and citation
  * logic can be tested end to end:
+ *   0. for meeting questions: read the calendar; the next meeting's title and
+ *      agenda become the search query
  *   1. knowledge search with the question (if offered)
  *   2. for "current/status" questions: list tasks, pick the best match, read its status
  *   3. for explicit "add a comment" requests: propose the comment (never executes)
@@ -38,7 +41,25 @@ export class FakeModelGateway implements ModelGateway {
       return t.execute(input, { signal: req.signal });
     };
 
-    const docs = ((await call("knowledge_search", { query: question.slice(0, 500) })) ?? {}) as DocResult;
+    let meeting: NonNullable<LiveResult["results"]>[number] | undefined;
+    if (MEETING_INTENT.test(question) && tools.has("calendar_events_list")) {
+      meeting = ((await call("calendar_events_list", { days: 7 })) as LiveResult | undefined)?.results?.[0];
+    }
+    const topic = meeting ? `${String(meeting.data.title ?? "")} ${String(meeting.data.agenda ?? "")}` : question;
+    // A meeting is researched one agenda item at a time (as a real model would), within the tool budget.
+    const queries = meeting
+      ? String(meeting.data.agenda ?? "")
+          .split(/\s*\d+\.\s+|[.:;,]\s+|\s+and\s+/)
+          .map((i) => i.trim())
+          .filter((i) => i.length > 3)
+          .slice(0, 4)
+          .map((i) => `${String(meeting!.data.title ?? "").split(" ")[0]} ${i}`)
+      : [question];
+    const docs: DocResult = { evidence: [] };
+    for (const query of queries.length ? queries : [topic]) {
+      const r = ((await call("knowledge_search", { query: query.slice(0, 500) })) ?? {}) as DocResult;
+      docs.evidence!.push(...(r.evidence ?? []));
+    }
     let live: LiveResult | undefined;
     let proposal: ProposalResult | undefined;
     const wantsLive = LIVE_INTENT.test(question) || COMMENT_INTENT.test(question);
@@ -58,8 +79,13 @@ export class FakeModelGateway implements ModelGateway {
     }
 
     const lines: string[] = [];
-    const q = [...new Set(terms(question))];
-    const needed = Math.max(2, Math.ceil(q.length * 0.6));
+    if (meeting) {
+      const d = meeting.data as { title?: string; start?: string; attendees?: string[] };
+      lines.push(`- Next meeting: ${d.title} at ${d.start}, with ${(d.attendees ?? []).join(", ")} [[${meeting.id}]]`);
+    }
+    const q = [...new Set(terms(meeting ? topic : question))];
+    // A meeting's evidence was already retrieved per agenda item: one shared topic term makes a sentence relevant.
+    const needed = meeting ? 1 : Math.max(2, Math.ceil(q.length * 0.6));
     const seen = new Set<string>();
     for (const e of docs.evidence ?? []) {
       for (const s of splitSentences(e.text)) {

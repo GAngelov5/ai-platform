@@ -34,7 +34,15 @@ export interface LiveReadResult {
   data: unknown;
 }
 
-export type ReadHandler = (input: Record<string, unknown>, opts: { signal?: AbortSignal }) => Promise<LiveReadResult[]>;
+/**
+ * `principal` is the trusted caller (from TrustedContext, never from model
+ * arguments). Personal data sources (calendar, mail) read only this
+ * principal's data, as with a delegated token.
+ */
+export type ReadHandler = (
+  input: Record<string, unknown>,
+  opts: { signal?: AbortSignal; principal: { customerId: string; principalId: string } },
+) => Promise<LiveReadResult[]>;
 
 export interface WriteDescription {
   /** Human-readable operation, shown on the approval card. */

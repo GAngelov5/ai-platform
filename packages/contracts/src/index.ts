@@ -258,6 +258,52 @@ export const ApproveActionRequestSchema = z.strictObject({
 });
 export type ApproveActionRequest = z.infer<typeof ApproveActionRequestSchema>;
 
+// ---------------------------------------------------------------------------
+// Workflows (ADR 0011)
+// ---------------------------------------------------------------------------
+
+export const WorkflowRunViewSchema = z.strictObject({
+  id: z.string(),
+  scheduledFor: z.iso.datetime(),
+  status: z.enum(["pending", "running", "succeeded", "failed"]),
+  attempts: z.number().int().min(0),
+  startedAt: z.iso.datetime().nullable(),
+  finishedAt: z.iso.datetime().nullable(),
+  /** Kind-specific summary, e.g. checked tasks, changes and proposal ids. */
+  result: z.record(z.string(), z.unknown()).nullable(),
+  error: z.string().nullable(),
+});
+export type WorkflowRunView = z.infer<typeof WorkflowRunViewSchema>;
+
+export const WorkflowViewSchema = z.strictObject({
+  id: z.string(),
+  kind: z.string(),
+  title: z.string(),
+  config: z.record(z.string(), z.unknown()),
+  intervalMinutes: z.number().int(),
+  enabled: z.boolean(),
+  nextRunAt: z.iso.datetime(),
+  createdAt: z.iso.datetime(),
+  lastRun: WorkflowRunViewSchema.nullable(),
+});
+export type WorkflowView = z.infer<typeof WorkflowViewSchema>;
+
+export const CreateWorkflowRequestSchema = z.strictObject({
+  kind: z.string().regex(/^[a-z][a-z0-9-]{1,40}$/),
+  config: z.record(z.string(), z.unknown()),
+  /** 15 minutes to one week. */
+  intervalMinutes: z.number().int().min(15).max(7 * 24 * 60),
+});
+export type CreateWorkflowRequest = z.infer<typeof CreateWorkflowRequestSchema>;
+
+export const WorkflowKindViewSchema = z.strictObject({
+  kind: z.string(),
+  version: z.string(),
+  title: z.string(),
+  description: z.string(),
+});
+export type WorkflowKindView = z.infer<typeof WorkflowKindViewSchema>;
+
 /** Server-sent run events (`text/event-stream`, one JSON object per `data:` line). */
 export const RunEventSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("run.started"), runId: z.string(), userMessage: z.lazy(() => MessageSchema) }),

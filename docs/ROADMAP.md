@@ -16,6 +16,7 @@ Last updated: 2026-10-22
 | UI · Forest design | Workspace with context panel, Inbox, account menu, Your connections | commit 51c3d73 · design canvas |
 | 3a · Source ingestion | `SourceAdapter` contract, generic pipeline, folder adapter with inherited ACLs, quarantine, content store, partitions per access set, scheduled ingest → sync | ADR 0009 · 98 tests · `scripts/lightrag-live-check.mjs` (23/23, 2026-10-22) |
 | 3b · Knowledge selection gate *(retrieval part)* | PDF/DOCX parsing in an isolated worker thread, 110-file synthetic corpus, 34 labeled questions, HTTP eval harness (base + hard sets), platform-side version handling, optional semantic evidence score | ADR 0010 · `docs/eval/` (lexical + LightRAG) · 113 tests |
+| 3c · Second agent and workflow | Meeting Preparation Assistant (definition only) with a synthetic calendar MCP; durable scheduled status-check workflow (PostgreSQL state, BullMQ trigger, deduplicated proposals, one approval per write); Inbox → Scheduled checks | ADR 0011 · 129 tests · `scripts/stage3c-live-check.mjs` |
 
 ## Next
 
@@ -35,18 +36,46 @@ Last updated: 2026-10-22
      This needs real model answers, and waits for the model and hardware
      decision below.
    - OCR for scans.
-3. **Stage 3c · Second agent and workflow:** Meeting Preparation Assistant,
-   plus the durable scheduled status-check workflow.
-4. **Admin console:** sources (sync status, quarantine), integrations (pins,
+3. **Admin console:** sources (sync status, quarantine), integrations (pins,
    requests), action operator queue, runs and audit. Designed on the canvas,
    not built.
-5. **Stage 4 · Production hardening:** OIDC, secrets manager, image slimming
+4. **Stage 4 · Production hardening:** OIDC, secrets manager, image slimming
    and scanning, egress tests in CI, backup and restore drills,
    OpenTelemetry, Playwright.
-6. **Stage 5 · Customer packaging:** runbooks, a second customer
+5. **Stage 5 · Customer packaging:** runbooks, a second customer
    configuration, supervised pilot.
 
 ## Notes from the last stage (to check)
+
+**Stage 3c**
+- **Live check (2026-10-22):** the workflow and permission checks all pass
+  on the real stack (14/14). The worker ran a new check within 45 s, the
+  change to Blocked was proposed exactly once, an unchanged run proposed
+  nothing, and the approved proposal executed.
+- **Real-model briefings fail on CPU** (`qwen3:4b`).
+  - The routing was right: both runs called the calendar first, and
+    Alice's also checked both agenda tasks in the tracker.
+  - But Alice's run hit the 10-minute limit before searching documents.
+  - Bob's model wrote an answer without valid citations, so the runtime
+    abstained, as designed.
+  - The same agent passes with the deterministic model (tests). This is the
+    open model and hardware decision, not a platform defect.
+- The second agent is a definition plus eval cases. The platform needed two
+  general additions:
+  - live reads now receive the trusted caller, so a personal calendar is
+    read only for the signed-in user (the same contract Stage 2's Graph
+    needs)
+  - a calendar capability binding
+- Workflow writes are deduplicated by key, so retries, takeovers and later
+  runs never produce a second approval for the same change.
+- "Your connections" now lists capabilities across all agents, so the
+  calendar appears there.
+- The dev worker bind-mounts `fixtures/sources` read-only, so ingestion can
+  be tested by editing files ([MANUAL-TESTING.md](MANUAL-TESTING.md) §6).
+- **Manual testing guide:** [MANUAL-TESTING.md](MANUAL-TESTING.md) covers
+  every stage so far.
+
+**Stage 3b**
 
 - **Superseded versions ranked first.** The first lexical run put every
   go-live plan v1 above its v2 (0% current-first).
@@ -119,10 +148,13 @@ Last updated: 2026-10-22
 
 ## How to check the current state
 
+Step-by-step manual checks for every stage: [MANUAL-TESTING.md](MANUAL-TESTING.md).
+
 ```bash
 pnpm typecheck && pnpm test
 SMOKE_BASE_URL=https://localhost:8443 SMOKE_INSECURE_TLS=1 pnpm smoke
 SMOKE_INSECURE_TLS=1 node scripts/lightrag-live-check.mjs
 SMOKE_INSECURE_TLS=1 node scripts/integration-live-check.mjs
 EVAL_BASE_URL=https://localhost:8443 SMOKE_INSECURE_TLS=1 EVAL_LABEL=lightrag node scripts/eval-retrieval.mjs
+SMOKE_INSECURE_TLS=1 WITH_MODEL=1 node scripts/stage3c-live-check.mjs
 ```

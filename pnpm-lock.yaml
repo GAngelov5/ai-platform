@@ -179,6 +179,37 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  agents/meeting-prep:
+    dependencies:
+      '@platform/agents':
+        specifier: workspace:*
+        version: link:../../packages/agents
+    devDependencies:
+      '@platform/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
+      '@platform/connectors':
+        specifier: workspace:*
+        version: link:../../packages/connectors
+      '@platform/knowledge':
+        specifier: workspace:*
+        version: link:../../packages/knowledge
+      '@platform/mcp-atlas-tracker':
+        specifier: workspace:*
+        version: link:../../services/mcp-atlas-tracker
+      '@platform/security':
+        specifier: workspace:*
+        version: link:../../packages/security
+      '@types/node':
+        specifier: ^24
+        version: 24.19.1
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@types/node@24.19.1)(vite@8.3.2(@types/node@24.19.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
+
   agents/project-assistant:
     dependencies:
       '@platform/agents':
@@ -218,6 +249,9 @@ importers:
       '@platform/actions':
         specifier: workspace:*
         version: link:../../packages/actions
+      '@platform/agent-meeting-prep':
+        specifier: workspace:*
+        version: link:../../agents/meeting-prep
       '@platform/agent-project-assistant':
         specifier: workspace:*
         version: link:../../agents/project-assistant
@@ -242,6 +276,9 @@ importers:
       '@platform/security':
         specifier: workspace:*
         version: link:../../packages/security
+      '@platform/workflows':
+        specifier: workspace:*
+        version: link:../../packages/workflows
       pino:
         specifier: ^10.0.0
         version: 10.4.0
@@ -334,6 +371,9 @@ importers:
       '@platform/security':
         specifier: workspace:*
         version: link:../../packages/security
+      '@platform/workflows':
+        specifier: workspace:*
+        version: link:../../packages/workflows
       bullmq:
         specifier: ^5.0.0 || ^6.0.0
         version: 6.3.11(ioredis@5.11.1)
@@ -590,6 +630,49 @@ importers:
       react:
         specifier: ^19
         version: 19.3.0
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@types/node@24.19.1)(vite@8.3.2(@types/node@24.19.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
+
+  packages/workflows:
+    dependencies:
+      '@platform/actions':
+        specifier: workspace:*
+        version: link:../actions
+      '@platform/agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@platform/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@platform/database':
+        specifier: workspace:*
+        version: link:../database
+      '@platform/security':
+        specifier: workspace:*
+        version: link:../security
+      drizzle-orm:
+        specifier: ^0.45.0
+        version: 0.45.3(@electric-sql/pglite@0.5.8)(postgres@3.4.9)
+      zod:
+        specifier: ^4.6.0
+        version: 4.6.5
+    devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.0
+        version: 0.5.8
+      '@platform/connectors':
+        specifier: workspace:*
+        version: link:../connectors
+      '@platform/mcp-atlas-tracker':
+        specifier: workspace:*
+        version: link:../../services/mcp-atlas-tracker
+      '@types/node':
+        specifier: ^24
+        version: 24.19.1
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

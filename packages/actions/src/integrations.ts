@@ -1,5 +1,5 @@
 import { CapabilityRegistry } from "@platform/agents";
-import { ConnectorRegistry, McpConnector, McpServersSchema, registerAtlasTrackerCapabilities } from "@platform/connectors";
+import { ConnectorRegistry, McpConnector, McpServersSchema, registerAtlasTrackerCapabilities, registerCalendarCapabilities } from "@platform/connectors";
 import type { AuditInput, Database, PrincipalRecord } from "@platform/database";
 import { ActionService } from "./index.js";
 
@@ -32,6 +32,7 @@ export function buildIntegrations(i: IntegrationsInput) {
     connectors.register(c);
     // Capability bindings are platform code keyed by server id; unknown servers expose nothing.
     if (srv.id === "atlas-tracker") registerAtlasTrackerCapabilities(capabilities, c);
+    else if (srv.id === "calendar") registerCalendarCapabilities(capabilities, c);
     else i.log?.("MCP server has no capability bindings; nothing exposed", { server: srv.id });
   }
   const actions = new ActionService({

@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
+import { buildCalendarMcpServer, type CalendarStore } from "./calendar.js";
 import type { TrackerStore, TrackerTask } from "./store.js";
 
 export interface TrackerServerOptions {
@@ -11,7 +12,16 @@ export interface TrackerServerOptions {
   token: string;
   /** Test hook: delay the response AFTER a write has been committed (simulates response loss). */
   postCommitDelayMs?: number;
+  /** Optional second MCP endpoint at /calendar/mcp, with its own audience-bound token. */
+  calendar?: { store: CalendarStore; token: string };
+  /**
+   * Synthetic test hook (never in a real system): POST /test/tasks/<KEY>/status
+   * with {"status": "..."} changes a task's live status, authorized by the tracker token.
+   */
+  testHooks?: boolean;
 }
+
+const STATUSES = ["To do", "In progress", "Blocked", "At risk", "Done"] as const;
 
 const json = (value: unknown) => ({
   content: [{ type: "text" as const, text: JSON.stringify(value) }],
@@ -117,11 +127,13 @@ export function createTrackerHttpServer(o: TrackerServerOptions): Server {
         res.writeHead(200, { "content-type": "application/json" }).end('{"status":"ok"}');
         return;
       }
-      if (req.url !== "/mcp") {
+      const hook = o.testHooks && req.method === "POST" ? /^\/test\/tasks\/([A-Za-z]+-\d+)\/status$/.exec(req.url ?? "") : null;
+      const route = req.url === "/mcp" ? "tracker" : req.url === "/calendar/mcp" && o.calendar ? "calendar" : hook ? "hook" : null;
+      if (!route) {
         res.writeHead(404).end();
         return;
       }
-      if (!authorized(req, o.token)) {
+      if (!authorized(req, route === "calendar" ? o.calendar!.token : o.token)) {
         res.writeHead(401, { "content-type": "application/json" }).end('{"error":"unauthorized"}');
         return;
       }
@@ -130,7 +142,14 @@ export function createTrackerHttpServer(o: TrackerServerOptions): Server {
         return;
       }
       const body = await readBody(req);
-      const server = buildMcpServer(o);
+      if (route === "hook") {
+        const status = (body as { status?: string })?.status;
+        if (!STATUSES.includes(status as (typeof STATUSES)[number])) throw new Error(`status must be one of ${STATUSES.join(", ")}`);
+        const task = await o.store.setStatus(hook![1]!, status as TrackerTask["status"]);
+        res.writeHead(task ? 200 : 404, { "content-type": "application/json" }).end(JSON.stringify(task ? view(task) : { error: "unknown task" }));
+        return;
+      }
+      const server = route === "calendar" ? buildCalendarMcpServer(o.calendar!.store) : buildMcpServer(o);
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
       res.on("close", () => {
         void transport.close();

@@ -15,8 +15,11 @@ x-mcp-env: &mcp-env
       "tasks_list":"64df1f1cd397b9a68f9f61985281f600690d34fe13fdf3a940b875e7b7fc56f2",
       "task_status":"15f87884badb2a52ebd8fc8c145e5b1781a53e503cae602d8e486df925934655",
       "task_add_comment":"62fcea50f2e7b05296caafeaf3bc586dbfffa1a9939afb9eb510d63550fbf03b",
-      "task_find_comment":"3b084587549d5d1e7528910f0ffe501db9f8b2d97e06c86587ad5b99ad98cebf"}}]
+      "task_find_comment":"3b084587549d5d1e7528910f0ffe501db9f8b2d97e06c86587ad5b99ad98cebf"}},
+     {"id":"calendar","url":"http://mcp-atlas-tracker:8080/calendar/mcp","timeoutMs":15000,"pinnedTools":{
+      "events_list":"41f3c155289f2a8f9f4a23aacb02f35d44e86670b051f617766149062cd1108b"}}]
   MCP_TOKEN_ATLAS_TRACKER: ${MCP_TOKEN_ATLAS_TRACKER:?set MCP_TOKEN_ATLAS_TRACKER}
+  MCP_TOKEN_CALENDAR: ${MCP_TOKEN_CALENDAR:?set MCP_TOKEN_CALENDAR}
 
 services:
   mcp-atlas-tracker:
@@ -28,6 +31,10 @@ services:
     tmpfs: ["/tmp"]
     environment:
       TRACKER_TOKEN: ${MCP_TOKEN_ATLAS_TRACKER:?set MCP_TOKEN_ATLAS_TRACKER}
+      # Synthetic calendar at /calendar/mcp (Stage 3c), with its own audience-bound token.
+      CALENDAR_TOKEN: ${MCP_TOKEN_CALENDAR:?set MCP_TOKEN_CALENDAR}
+      # Synthetic test hook for manual testing: POST /test/tasks/<KEY>/status (docs/MANUAL-TESTING.md).
+      TRACKER_TEST_HOOKS: "1"
     volumes: [tracker-data:/data]
     networks: [tools]
     restart: unless-stopped

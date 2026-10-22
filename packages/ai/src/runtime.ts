@@ -266,7 +266,7 @@ export class AgentRuntime {
             }
             if (d.kind === "read" && cap.read) {
               const readAt = this.now();
-              const results = await cap.read(parsed.data, { signal: callSignal });
+              const results = await cap.read(parsed.data, { signal: callSignal, principal: { customerId: ctx.customerId, principalId: ctx.principalId } });
               const rows = results.slice(0, 25).map((r) => {
                 const id = newLiveId();
                 // Untrusted: neutralize tags inside every string value, and bound the size.

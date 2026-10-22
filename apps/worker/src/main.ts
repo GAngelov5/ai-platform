@@ -7,6 +7,7 @@ import { ingestFixturesIntoRagflow, loadFixtureCorpus, loadSources, RagflowClien
 import { buildIntegrations } from "@platform/actions";
 import { fetchMcpToolPins } from "@platform/connectors";
 import { ConfigurationError, LOG_REDACT_PATHS, loadPlatformConfig, mcpTokenVar, redactUrl } from "@platform/security";
+import { WorkflowService } from "@platform/workflows";
 import { seedFixtures } from "./seed.js";
 import { ingestAll } from "./ingest.js";
 
@@ -113,6 +114,29 @@ async function main() {
       }
       return;
     }
+    case "workflows-tick": {
+      // One-shot: dispatch due workflows and execute runnable runs (manual testing, operators).
+      const c = config({ requireDatabase: true });
+      const h = connectDatabase(c.databaseUrl!, { max: 2 });
+      try {
+        const repos = createRepositories(h.db);
+        const { actions, capabilities } = buildIntegrations({
+          db: h.db,
+          mcpServersJson: c.integrations.mcpServersJson,
+          secret: (n) => process.env[n],
+          tokenVar: mcpTokenVar,
+          principals: repos.principals,
+          audit: repos.audit,
+          proposalTtlMinutes: c.integrations.proposalTtlMinutes,
+          log: (msg, detail) => log.info(detail ?? {}, msg),
+        });
+        const workflows = new WorkflowService({ db: h.db, capabilities, actions, principals: repos.principals, audit: repos.audit, policyVersion: c.policyVersion, log: (m, d) => log.warn(d ?? {}, m) });
+        log.info(await workflows.tick(), "workflow tick");
+      } finally {
+        await h.close();
+      }
+      return;
+    }
     case "mcp-pins": {
       // Operator review: print live tool definitions and their pin hashes.
       const url = process.argv[3];
@@ -140,7 +164,7 @@ async function main() {
       await waitFor("postgres", h.ping);
       const repos = createRepositories(h.db);
       const sources = loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT, { includeEvalCorpus: c.ingestion.includeEvalCorpus });
-      const { actions } = buildIntegrations({
+      const { actions, capabilities } = buildIntegrations({
         db: h.db,
         mcpServersJson: c.integrations.mcpServersJson,
         secret: (n) => process.env[n],
@@ -150,6 +174,15 @@ async function main() {
         proposalTtlMinutes: c.integrations.proposalTtlMinutes,
         onSecurityEvent: (type, detail) => log.warn({ securityEvent: type, ...detail }, "security event"),
         log: (msg, detail) => log.info(detail ?? {}, msg),
+      });
+      const workflows = new WorkflowService({
+        db: h.db,
+        capabilities,
+        actions,
+        principals: repos.principals,
+        audit: repos.audit,
+        policyVersion: c.policyVersion,
+        log: (msg, detail) => log.warn(detail ?? {}, msg),
       });
       // Durable state lives in PostgreSQL. BullMQ only schedules maintenance;
       // action execution is driven by the transactional outbox.
@@ -188,6 +221,12 @@ async function main() {
             }
             return run.value;
           }
+          if (job.name === "workflow-tick") {
+            // Dispatch due workflows and execute runnable runs (incl. ones a crashed worker left behind).
+            const r = await workflows.tick();
+            if (r.dispatched || r.succeeded || r.failed) log.info(r, "workflow tick");
+            return r;
+          }
           if (job.name === "action-maintenance") {
             const expired = await actions.expireStale();
             const recovered = await actions.recoverInterrupted();
@@ -202,6 +241,7 @@ async function main() {
       const queue = new Queue(QUEUE, { connection });
       await queue.upsertJobScheduler("catalog-report-hourly", { every: 60 * 60 * 1000 }, { name: "catalog-report" });
       await queue.upsertJobScheduler("action-maintenance", { every: 60 * 1000 }, { name: "action-maintenance" });
+      await queue.upsertJobScheduler("workflow-tick", { every: 60 * 1000 }, { name: "workflow-tick" });
       await queue.upsertJobScheduler("knowledge-ingest", { every: c.ingestion.intervalMinutes * 60 * 1000 }, { name: "knowledge-ingest" });
       await actions.recoverInterrupted(0); // anything 'executing' at startup was interrupted
       let stopping = false;
@@ -230,7 +270,7 @@ async function main() {
       return;
     }
     default:
-      throw new Error(`unknown command ${cmd} (migrate | seed | ingest [sourceId] [--sync] | ragflow-ingest | lightrag-sync | mcp-pins | healthcheck | start)`);
+      throw new Error(`unknown command ${cmd} (migrate | seed | ingest [sourceId] [--sync] | ragflow-ingest | lightrag-sync | workflows-tick | mcp-pins | healthcheck | start)`);
   }
 }
 

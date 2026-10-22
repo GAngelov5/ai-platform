@@ -19,7 +19,8 @@
     "ioredis": "^5.4.0",
     "pino": "^10.0.0",
     "@platform/actions": "workspace:*",
-    "@platform/connectors": "workspace:*"
+    "@platform/connectors": "workspace:*",
+    "@platform/workflows": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24",

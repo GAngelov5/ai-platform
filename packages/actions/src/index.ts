@@ -120,8 +120,15 @@ export class ActionService {
   // User-facing operations (TrustedContext required)
   // ---------------------------------------------------------------------------
 
-  /** Called by the agent runtime for write capabilities. Never executes anything. */
-  async propose(ctx: TrustedContext, input: { capabilityId: string; input: Record<string, unknown>; conversationId?: string; runId?: string }): Promise<ActionProposalView> {
+  /**
+   * Called by the agent runtime (and workflows) for write capabilities. Never
+   * executes anything. With `dedupeKey`, proposing the same logical write again
+   * (a retried or redelivered workflow run) returns the existing proposal.
+   */
+  async propose(
+    ctx: TrustedContext,
+    input: { capabilityId: string; input: Record<string, unknown>; conversationId?: string; runId?: string; dedupeKey?: string },
+  ): Promise<ActionProposalView> {
     const cap = this.d.capabilities.get(input.capabilityId);
     if (!cap?.write || cap.definition.kind !== "write") throw new NotFoundOrForbiddenError("unknown write capability");
     const principal = await this.d.principals.get(ctx.customerId, ctx.principalId);
@@ -141,20 +148,33 @@ export class ActionService {
       policyVersion: ctx.policyVersion,
       expiresAt: new Date(this.now().getTime() + this.ttlMs),
     };
-    const [row] = await this.d.db
-      .insert(actionProposals)
-      .values({
-        ...base,
-        conversationId: input.conversationId ?? null,
-        runId: input.runId ?? null,
-        operation: desc.operation,
-        destination: desc.destination,
-        risk: desc.risk,
-        payloadHash: ActionService.hashOf(base),
-        idempotencyKey,
-        state: "pending_approval",
-      })
-      .returning();
+    const values = {
+      ...base,
+      conversationId: input.conversationId ?? null,
+      runId: input.runId ?? null,
+      operation: desc.operation,
+      destination: desc.destination,
+      risk: desc.risk,
+      payloadHash: ActionService.hashOf(base),
+      idempotencyKey,
+      dedupeKey: input.dedupeKey ?? null,
+      state: "pending_approval" as const,
+    };
+    const [row] = input.dedupeKey
+      ? await this.d.db
+          .insert(actionProposals)
+          .values(values)
+          .onConflictDoNothing({ target: [actionProposals.customerId, actionProposals.dedupeKey] })
+          .returning()
+      : await this.d.db.insert(actionProposals).values(values).returning();
+    if (!row) {
+      const [existing] = await this.d.db
+        .select()
+        .from(actionProposals)
+        .where(and(eq(actionProposals.customerId, ctx.customerId), eq(actionProposals.dedupeKey, input.dedupeKey!)));
+      if (!existing || existing.principalId !== ctx.principalId) throw new NotFoundOrForbiddenError();
+      return ActionService.view(existing);
+    }
     await this.d.audit.write({
       customerId: ctx.customerId,
       principalId: ctx.principalId,

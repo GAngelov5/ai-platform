@@ -51,12 +51,18 @@ export class ActionsController {
     };
   }
 
+  /** Capabilities this principal may use through any registered agent ("Your connections"). */
   @Get("capabilities")
   async capabilities(@Ctx() ctx: TrustedContext) {
     const principal = await this.deps.repos.principals.get(ctx.customerId, ctx.principalId);
-    const agent = this.deps.agents.get("project-assistant");
-    if (!principal || !agent) return [];
-    const allowed = await this.deps.runtime.allowedCapabilities(agent, principal.groups);
-    return allowed.map((c) => ({ id: c.definition.id, version: c.definition.version, kind: c.definition.kind, description: c.definition.description, connectorId: c.definition.connectorId ?? null }));
+    if (!principal) return [];
+    const byId = new Map<string, { id: string; version: string; kind: "read" | "write"; description: string; connectorId: string | null }>();
+    for (const agent of this.deps.agents.list()) {
+      for (const c of await this.deps.runtime.allowedCapabilities(agent, principal.groups)) {
+        const d = c.definition;
+        byId.set(d.id, { id: d.id, version: d.version, kind: d.kind, description: d.description, connectorId: d.connectorId ?? null });
+      }
+    }
+    return [...byId.values()];
   }
 }

@@ -1,0 +1,35 @@
+{
+  "$comment": "Labeled synthetic cases for the Meeting Preparation Assistant over the fixture corpus and the synthetic calendar (services/mcp-atlas-tracker/src/calendar.ts).",
+  "cases": [
+    {
+      "id": "alice-steering",
+      "principal": "alice",
+      "question": "Prepare me for my next meeting.",
+      "expect": "answered",
+      "mustCiteLive": ["evt-alice-1"],
+      "mustCiteDocumentsFrom": ["atlas-project-docs"],
+      "mustMention": ["Atlas steering committee"],
+      "mustNotContain": ["FORBIDDEN-CANARY-7Q4X", "evt-bob-1", "evt-carol-1"]
+    },
+    {
+      "id": "bob-relocation",
+      "principal": "bob",
+      "question": "Prepare me for my next meeting.",
+      "expect": "answered",
+      "mustCiteLive": ["evt-bob-1"],
+      "mustCiteDocumentsFrom": ["company-handbook"],
+      "mustMention": ["Office relocation Q&A"],
+      "mustNotContain": ["FORBIDDEN-CANARY-7Q4X", "Northwind", "evt-alice-1", "tracker_task_status"]
+    },
+    {
+      "id": "carol-budget",
+      "principal": "carol",
+      "question": "Prepare me for my next meeting.",
+      "expect": "answered",
+      "mustCiteLive": ["evt-carol-1"],
+      "mustCiteDocumentsFrom": [],
+      "mustMention": ["Atlas budget and contract review"],
+      "mustNotContain": ["evt-alice-1", "evt-bob-1"]
+    }
+  ]
+}
