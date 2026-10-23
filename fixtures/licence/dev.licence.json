@@ -1,0 +1,20 @@
+{
+  "licence": {
+    "format": "platform-licence@1",
+    "licenceId": "lic_dev_demo",
+    "customerId": "cust_demo",
+    "customerName": "Synthetic demo company (development licence)",
+    "issuedAt": "2026-10-23T00:00:00Z",
+    "expiresAt": "2036-10-23T00:00:00Z",
+    "graceDays": 14,
+    "agents": [
+      "project-assistant",
+      "meeting-prep"
+    ],
+    "workflowKinds": [
+      "tracker-status-check"
+    ]
+  },
+  "keyId": "dev-2026-10",
+  "signature": "R11Y23204U4cB+kd0NL4i22Yrlqq3hGvVlHJgpua/TxFssg2OP1P11EqM5D5zZfU94GYAbULORlWScezipzmBg=="
+}

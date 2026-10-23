@@ -22,6 +22,7 @@
     "@nestjs/core": "^12.1.0",
     "@nestjs/platform-express": "^12.1.0",
     "@platform/actions": "workspace:*",
+    "@platform/agent-knowledge-assistant": "workspace:*",
     "@platform/agent-meeting-prep": "workspace:*",
     "@platform/agent-project-assistant": "workspace:*",
     "@platform/agents": "workspace:*",

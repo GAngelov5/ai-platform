@@ -7,6 +7,8 @@ x-app-env: &app-env
   CUSTOMER_ID: ${CUSTOMER_ID:-cust_demo}
   BRAND_NAME: ${BRAND_NAME:-Company Brain (synthetic demo)}
   LOG_LEVEL: ${LOG_LEVEL:-info}
+  # Signed licence (ADR 0014). Empty: the development licence (refused in production).
+  LICENCE_FILE: ${LICENCE_FILE:-}
   DATABASE_URL: postgres://platform:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/platform
   REDIS_URL: redis://valkey:6379
   PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://localhost:8443}

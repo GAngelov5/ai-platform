@@ -19,6 +19,7 @@ const prodBase = {
   MODEL_BASE_URL: "http://vllm:8000/v1",
   MODEL_NAME: "local-model",
   MODEL_APPROVED_ENDPOINTS: "http://vllm:8000",
+  LICENCE_FILE: "/etc/platform/customer.licence.json",
 };
 
 const problems = (env: Record<string, string>) => {
@@ -34,6 +35,11 @@ const problems = (env: Record<string, string>) => {
 describe("platform configuration", () => {
   it("accepts a complete production configuration", () => {
     expect(problems(prodBase)).toEqual([]);
+  });
+
+  it("requires a signed licence file in production", () => {
+    const { LICENCE_FILE: _, ...env } = prodBase;
+    expect(problems(env)).toContain("production requires LICENCE_FILE (a signed licence)");
   });
 
   it("rejects development authentication in production", () => {

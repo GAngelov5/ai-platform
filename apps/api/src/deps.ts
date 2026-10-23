@@ -2,6 +2,7 @@ import { buildIntegrations, type ActionService } from "@platform/actions";
 import { AgentRegistry, type CapabilityRegistry } from "@platform/agents";
 import type { ConnectorRegistry } from "@platform/connectors";
 import { AgentRuntime, FakeModelGateway, OpenAICompatibleGateway, type ModelGateway } from "@platform/ai";
+import { knowledgeAssistant } from "@platform/agent-knowledge-assistant";
 import { meetingPrep } from "@platform/agent-meeting-prep";
 import { projectAssistant } from "@platform/agent-project-assistant";
 import { createAdminQueries, createRepositories, type AdminQueries, type Database, type Repositories } from "@platform/database";
@@ -17,12 +18,14 @@ import {
   RagflowKnowledgeAdapter,
   type KnowledgeAdapter,
 } from "@platform/knowledge";
-import { mcpTokenVar, type PlatformConfig } from "@platform/security";
+import { loadEntitlements, mcpTokenVar, type Entitlements, type PlatformConfig } from "@platform/security";
 import { WorkflowService } from "@platform/workflows";
 import { fileURLToPath } from "node:url";
 import type { Logger } from "./logger.js";
 
 export const DEFAULT_FIXTURES_ROOT = fileURLToPath(new URL("../../../fixtures", import.meta.url));
+/** The development licence: the default outside production (ADR 0014). */
+export const DEFAULT_LICENCE_FILE = fileURLToPath(new URL("../../../fixtures/licence/dev.licence.json", import.meta.url));
 export const DEFAULT_FIXTURES_DIR = fileURLToPath(new URL("../../../fixtures/documents", import.meta.url));
 
 /** The configured knowledge sources (the same list the worker ingests). */
@@ -36,7 +39,9 @@ export interface PlatformDeps {
   config: PlatformConfig;
   repos: Repositories;
   knowledge: PolicyEnforcingKnowledgeService;
+  /** Every shipped agent; what a deployment may use is decided by `entitlements`. */
   agents: AgentRegistry;
+  entitlements: Entitlements;
   runtime: AgentRuntime;
   model: ModelGateway;
   logger: Logger;
@@ -110,6 +115,7 @@ export async function buildDeps(input: {
   model?: ModelGateway;
   /** Secret resolver; defaults to process.env. */
   secret?: (name: string) => string | undefined;
+  entitlements?: Entitlements;
 }): Promise<PlatformDeps> {
   const { config, db, logger } = input;
   const repos = createRepositories(db);
@@ -128,7 +134,8 @@ export async function buildDeps(input: {
     },
   });
   const model = input.model ?? createModelGateway(config);
-  const agents = new AgentRegistry([projectAssistant, meetingPrep]);
+  const entitlements = input.entitlements ?? loadEntitlements(config, DEFAULT_LICENCE_FILE);
+  const agents = new AgentRegistry([projectAssistant, meetingPrep, knowledgeAssistant]);
   const securityEvent = (type: string, detail: Record<string, unknown>) => {
     logger.warn({ securityEvent: type, ...detail }, "security event");
     void repos.audit.write({ customerId: config.customerId, action: type, outcome: "denied", detail }).catch(() => {});
@@ -154,6 +161,6 @@ export async function buildDeps(input: {
     actions,
   });
   // The API creates and lists workflows; the worker dispatches and executes them.
-  const workflows = new WorkflowService({ db, capabilities, actions, principals: repos.principals, audit: repos.audit, policyVersion: config.policyVersion });
-  return { config, repos, knowledge, agents, runtime, model, logger, pingDatabase: input.pingDatabase, actions, capabilities, connectors, workflows, admin: createAdminQueries(db) };
+  const workflows = new WorkflowService({ db, capabilities, actions, principals: repos.principals, audit: repos.audit, policyVersion: config.policyVersion, entitlements });
+  return { config, repos, knowledge, agents, entitlements, runtime, model, logger, pingDatabase: input.pingDatabase, actions, capabilities, connectors, workflows, admin: createAdminQueries(db) };
 }

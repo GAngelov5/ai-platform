@@ -1,5 +1,5 @@
 import { Controller, Get, HttpCode, Inject, Param, Post, Query } from "@nestjs/common";
-import { NotFoundOrForbiddenError, type TrustedContext } from "@platform/security";
+import { CORE_AGENTS, NotFoundOrForbiddenError, type TrustedContext } from "@platform/security";
 import { AdminOnly, Ctx } from "../auth/decorators.js";
 import { configuredSources, type PlatformDeps } from "../deps.js";
 import { DEPS } from "../tokens.js";
@@ -48,6 +48,7 @@ export class AdminController {
       environment: config.env,
       knowledgeProvider: config.knowledge.provider,
       evidenceScoring: config.evidenceScoring.mode,
+      licence: (({ status, licenceId, expiresAt, graceEndsAt, daysLeft }) => ({ status, licenceId, expiresAt, graceEndsAt, daysLeft }))(this.deps.entitlements.summary()),
       health,
       sources: {
         configured: sources.length,
@@ -136,10 +137,19 @@ export class AdminController {
     );
   }
 
+  /** The licence summary: ids, dates and entitlements; never the signature. */
+  @Get("licence")
+  licence() {
+    return this.deps.entitlements.summary();
+  }
+
   @Get("agents")
   agents() {
+    const e = this.deps.entitlements;
     return this.deps.agents.list().map((a) => ({
       id: a.id,
+      core: CORE_AGENTS.includes(a.id),
+      licensed: e.agentAllowed(a.id),
       version: a.version,
       name: a.name,
       description: a.description,

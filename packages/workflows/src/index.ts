@@ -4,7 +4,7 @@ import type { WorkflowKindView, WorkflowRunView, WorkflowView } from "@platform/
 import type { CapabilityRegistry, LiveReadResult } from "@platform/agents";
 import type { ActionService } from "@platform/actions";
 import { schema, type AuditInput, type Database, type PrincipalRecord } from "@platform/database";
-import { createTrustedContext, NotFoundOrForbiddenError, type TrustedContext } from "@platform/security";
+import { createTrustedContext, Entitlements, NotFoundOrForbiddenError, NotLicensedError, type TrustedContext } from "@platform/security";
 
 const { workflows, workflowRuns } = schema;
 type WorkflowRow = typeof workflows.$inferSelect;
@@ -124,6 +124,8 @@ export interface WorkflowServiceDeps {
   audit: { write(e: AuditInput): Promise<void> };
   /** Must match the API's policy version, so proposals stay approvable. */
   policyVersion: string;
+  /** Which workflow kinds the licence includes (ADR 0014); checked on create and on every run. Default: all. */
+  entitlements?: Entitlements;
   kinds?: WorkflowKindRegistry;
   now?: () => Date;
   /** A run still "running" this long after its heartbeat is taken over (crash recovery). */
@@ -155,16 +157,21 @@ const DEFAULT_PROPOSAL_TTL_MS = 72 * 60 * 60_000;
 export class WorkflowService {
   readonly kinds: WorkflowKindRegistry;
   private readonly now: () => Date;
+  private readonly entitlements: Entitlements;
 
   constructor(private readonly d: WorkflowServiceDeps) {
     this.kinds = d.kinds ?? new WorkflowKindRegistry();
+    this.entitlements = d.entitlements ?? Entitlements.unrestricted();
     this.now = d.now ?? (() => new Date());
   }
 
   // --- User-facing -------------------------------------------------------------
 
   listKinds(): WorkflowKindView[] {
-    return this.kinds.list().map((k) => ({ kind: k.kind, version: k.version, title: k.title, description: k.description }));
+    return this.kinds
+      .list()
+      .filter((k) => this.entitlements.workflowKindAllowed(k.kind))
+      .map((k) => ({ kind: k.kind, version: k.version, title: k.title, description: k.description }));
   }
 
   private async principal(customerId: string, principalId: string): Promise<PrincipalRecord> {
@@ -184,6 +191,7 @@ export class WorkflowService {
   async create(ctx: TrustedContext, input: { kind: string; config: Record<string, unknown>; intervalMinutes: number }): Promise<WorkflowView> {
     const kind = this.kinds.get(input.kind);
     if (!kind) throw new NotFoundOrForbiddenError("unknown workflow kind");
+    this.entitlements.assertWorkflowKind(kind.kind);
     const config = kind.config.parse(input.config);
     try {
       this.assertCapabilities(kind, await this.principal(ctx.customerId, ctx.principalId));
@@ -338,6 +346,8 @@ export class WorkflowService {
     let principal: PrincipalRecord | undefined;
     try {
       if (!w || !kind) throw new Error("workflow or kind no longer exists");
+      // A licence that no longer includes this kind stops its runs (the workflow itself is kept).
+      this.entitlements.assertWorkflowKind(kind.kind);
       // Permissions are those of the owner NOW, not when the workflow was created.
       principal = await this.principal(w.customerId, w.principalId);
       this.assertCapabilities(kind, principal);
@@ -385,7 +395,12 @@ export class WorkflowService {
       });
       return "succeeded";
     } catch (err) {
-      const message = err instanceof WorkflowForbiddenError || err instanceof NotFoundOrForbiddenError ? `forbidden: ${(err as Error).message}` : (err as Error).message;
+      const message =
+        err instanceof WorkflowForbiddenError || err instanceof NotFoundOrForbiddenError
+          ? `forbidden: ${(err as Error).message}`
+          : err instanceof NotLicensedError
+            ? `not licensed: ${err.entitlement}`
+            : (err as Error).message;
       await this.finish(run.id, run.attempts, "failed", null, message.slice(0, 500));
       if (w) {
         await this.d.audit.write({

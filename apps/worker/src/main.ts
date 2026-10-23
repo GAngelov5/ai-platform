@@ -6,12 +6,14 @@ import { connectDatabase, createAdminQueries, createRepositories, runMigrations,
 import { ingestFixturesIntoRagflow, loadFixtureCorpus, loadSources, RagflowClient, syncLightRagPartitions, type LightRagPartition } from "@platform/knowledge";
 import { buildIntegrations } from "@platform/actions";
 import { fetchMcpToolPins } from "@platform/connectors";
-import { ConfigurationError, LOG_REDACT_PATHS, loadPlatformConfig, mcpTokenVar, redactUrl } from "@platform/security";
+import { ConfigurationError, LicenceError, loadEntitlements, LOG_REDACT_PATHS, loadPlatformConfig, mcpTokenVar, redactUrl } from "@platform/security";
 import { WorkflowService } from "@platform/workflows";
 import { seedFixtures } from "./seed.js";
 import { ingestAll } from "./ingest.js";
 
 const FIXTURES_ROOT = process.env.FIXTURES_ROOT ?? fileURLToPath(new URL("../../../fixtures", import.meta.url));
+/** Same default as the API: the development licence outside production (ADR 0014). */
+const DEFAULT_LICENCE_FILE = fileURLToPath(new URL("../../../fixtures/licence/dev.licence.json", import.meta.url));
 const QUEUE = "platform-maintenance";
 
 function config(opts: { requireDatabase?: boolean; requireRedis?: boolean }) {
@@ -130,7 +132,7 @@ async function main() {
           proposalTtlMinutes: c.integrations.proposalTtlMinutes,
           log: (msg, detail) => log.info(detail ?? {}, msg),
         });
-        const workflows = new WorkflowService({ db: h.db, capabilities, actions, principals: repos.principals, audit: repos.audit, policyVersion: c.policyVersion, log: (m, d) => log.warn(d ?? {}, m) });
+        const workflows = new WorkflowService({ db: h.db, capabilities, actions, principals: repos.principals, audit: repos.audit, policyVersion: c.policyVersion, entitlements: loadEntitlements(c, DEFAULT_LICENCE_FILE), log: (m, d) => log.warn(d ?? {}, m) });
         log.info(await workflows.tick(), "workflow tick");
       } finally {
         await h.close();
@@ -182,6 +184,7 @@ async function main() {
         principals: repos.principals,
         audit: repos.audit,
         policyVersion: c.policyVersion,
+        entitlements: loadEntitlements(c, DEFAULT_LICENCE_FILE),
         log: (msg, detail) => log.warn(detail ?? {}, msg),
       });
       // Durable state lives in PostgreSQL. BullMQ only schedules maintenance;
@@ -322,5 +325,5 @@ async function lightragSync(db: ReturnType<typeof connectDatabase>["db"], custom
 
 main().catch((err) => {
   console.error(`worker: ${(err as Error).message}`);
-  process.exit(1);
+  process.exit(err instanceof LicenceError ? 78 : 1);
 });

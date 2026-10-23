@@ -56,8 +56,9 @@ packages/connectors      Connector registry, MCP client (pinning, bounds), Atlas
 packages/actions         ActionService: proposals, approvals, outbox execution, reconciliation
 packages/ui              SourceCitation (document/live), ApprovalCard, RunStatus, AgentCard
 services/mcp-atlas-tracker  Synthetic MCP server (live task state, idempotent comments)
-agents/project-assistant Agent definition + labeled eval questions
-agents/meeting-prep      Phase 6 placeholder (README only)
+agents/knowledge-assistant Core agent (documents only, always licensed) + evals
+agents/project-assistant Add-on agent definition + labeled eval questions
+agents/meeting-prep      Add-on agent: meeting briefings (definition + evals)
 infra/compose            Compose base, dev overlay, Caddy, LightRAG + Ollama overlay, RAGFlow overlay
 infra/docker/Dockerfile  Multi-target image build (api, worker, web)
 fixtures/                Synthetic identities and Project Atlas documents
@@ -196,6 +197,16 @@ GPU host, or Ollama natively on the Mac (Metal) as an approved local endpoint
 - The UI has an **EN | БГ** switch in the header.
 - For production Bulgarian content, use a multilingual embedding model
   (e.g. `bge-m3`) and evaluate the chat model in Bulgarian first.
+
+## Licence and the core assistant (ADR 0014)
+
+- A signed licence file (`LICENCE_FILE`) lists the add-on agents and workflow
+  kinds. It is verified offline with Ed25519; production refuses the
+  development key.
+- The **Knowledge Assistant** (documents only) is core and always available.
+  Add-ons keep working for 14 days after expiry, then stop.
+- Development licences are in `fixtures/licence/`. Vendor tool:
+  `node scripts/licence.mjs keygen | sign`.
 
 ## Second agent and scheduled checks (ADR 0011)
 

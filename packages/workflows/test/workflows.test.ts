@@ -13,7 +13,7 @@ import { ConnectorRegistry, fetchMcpToolPins, McpConnector, McpServerConfigSchem
 import { createRepositories, schema, seedIdentities, type Database } from "@platform/database";
 import { createTestDatabase } from "@platform/database/testing";
 import { createTrackerHttpServer, SEED_TASKS, TrackerStore } from "@platform/mcp-atlas-tracker";
-import { createTrustedContext, NotFoundOrForbiddenError } from "@platform/security";
+import { createTrustedContext, Entitlements, NotFoundOrForbiddenError, NotLicensedError, type Licence } from "@platform/security";
 import { WorkflowService } from "../src/index.js";
 
 const TOKEN = "test-token-0123456789";
@@ -30,13 +30,13 @@ let clock = new Date("2026-10-22T08:00:00Z");
 const ctx = (p: string) => createTrustedContext({ customerId: C, principalId: p, policyVersion: POLICY });
 const minutes = (n: number) => (clock = new Date(clock.getTime() + n * 60_000));
 
-function world() {
+function world(entitlements?: Entitlements) {
   const connector = new McpConnector(McpServerConfigSchema.parse({ id: "atlas-tracker", url, pinnedTools: pins, timeoutMs: 5000 }), TOKEN);
   const capabilities = new CapabilityRegistry();
   registerAtlasTrackerCapabilities(capabilities, connector);
   const repos = createRepositories(db);
   const actions = new ActionService({ db, capabilities, connectors: new ConnectorRegistry([connector]), principals: repos.principals, audit: repos.audit, now: () => clock });
-  const workflows = new WorkflowService({ db, capabilities, actions, principals: repos.principals, audit: repos.audit, policyVersion: POLICY, now: () => clock, staleMs: 5 * 60_000 });
+  const workflows = new WorkflowService({ db, capabilities, actions, principals: repos.principals, audit: repos.audit, policyVersion: POLICY, now: () => clock, staleMs: 5 * 60_000, entitlements });
   return { actions, workflows, repos };
 }
 
@@ -220,5 +220,28 @@ describe("WorkflowService", () => {
     expect(await workflows.dispatchDue()).toHaveLength(0);
     await workflows.runNow(ctx("alice"), w.id); // run-now re-enables and schedules immediately
     expect(await workflows.dispatchDue()).toHaveLength(1);
+  });
+
+  it("a licence that no longer includes the kind stops its runs and refuses new workflows (ADR 0014)", async () => {
+    const w = await world().workflows.create(ctx("alice"), { kind: "tracker-status-check", config: { project: "ATLAS" }, intervalMinutes: 60 });
+    const licence: Licence = {
+      format: "platform-licence@1",
+      licenceId: "lic_test",
+      customerId: C,
+      customerName: "Test",
+      issuedAt: "2025-01-01T00:00:00Z",
+      expiresAt: "2026-10-01T00:00:00Z",
+      graceDays: 14,
+      agents: [],
+      workflowKinds: ["tracker-status-check"],
+    };
+    // Expired 1 October, grace ended 15 October; the clock is 22 October.
+    const { workflows } = world(new Entitlements(licence, () => clock));
+    expect(workflows.listKinds()).toEqual([]);
+    await expect(workflows.create(ctx("alice"), { kind: "tracker-status-check", config: { project: "ATLAS" }, intervalMinutes: 60 })).rejects.toBeInstanceOf(NotLicensedError);
+    expect(await workflows.tick()).toEqual({ dispatched: 1, succeeded: 0, failed: 1 });
+    const [run] = await workflows.runs(ctx("alice"), w.id);
+    expect(run).toMatchObject({ status: "failed", error: "not licensed: workflow tracker-status-check" });
+    expect(await proposalsFor()).toEqual([]);
   });
 });

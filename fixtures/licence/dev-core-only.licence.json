@@ -1,0 +1,15 @@
+{
+  "licence": {
+    "format": "platform-licence@1",
+    "licenceId": "lic_dev_core_only",
+    "customerId": "cust_demo",
+    "customerName": "Synthetic demo company (core only)",
+    "issuedAt": "2026-10-23T00:00:00Z",
+    "expiresAt": "2036-10-23T00:00:00Z",
+    "graceDays": 14,
+    "agents": [],
+    "workflowKinds": []
+  },
+  "keyId": "dev-2026-10",
+  "signature": "19+EdWngGDjov7SxqyTGCi8lVlahxLNSWXdZkGiz3Bthu8LFstOue8XJyHTNxbxl1RNU9Y93RJ76cLBu2YYiDw=="
+}

@@ -1,5 +1,5 @@
 import { connectDatabase, waitFor } from "@platform/database";
-import { ConfigurationError, loadPlatformConfig, redactUrl } from "@platform/security";
+import { ConfigurationError, LicenceError, loadPlatformConfig, redactUrl } from "@platform/security";
 import { buildDeps, createApiApp, createLogger } from "./app.js";
 
 async function main() {
@@ -34,6 +34,7 @@ async function main() {
       knowledge: config.knowledge.provider,
       model: deps.model.descriptor,
       devAuth: config.auth.devAuthEnabled,
+      licence: (({ licenceId, status, expiresAt }) => ({ licenceId, status, expiresAt }))(deps.entitlements.summary()),
     },
     "api started",
   );
@@ -48,5 +49,5 @@ async function main() {
 
 main().catch((err) => {
   console.error("fatal startup error:", (err as Error).message);
-  process.exit(1);
+  process.exit(err instanceof LicenceError ? 78 : 1);
 });

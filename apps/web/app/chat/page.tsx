@@ -12,7 +12,7 @@ import type {
   ToolCallSummary,
 } from "@platform/contracts";
 import { AgentCard, ApprovalCard, ContextPanel, RunStatus, useT, type ConnectionSummary, type Translate } from "@platform/ui";
-import { api, apiStream } from "../../lib/api";
+import { api, ApiRequestError, apiStream } from "../../lib/api";
 import { notifyActionsChanged } from "../../lib/usePendingActions";
 import { useSession } from "../../lib/useSession";
 import { Header } from "../Header";
@@ -111,6 +111,11 @@ export default function ChatPage() {
     [loadProposals],
   );
 
+  // The licence decides which agents exist here (ADR 0014): fall back to the first one listed.
+  useEffect(() => {
+    if (agents.length && !agents.some((a) => a.id === agentId)) setAgentId(agents[0]!.id);
+  }, [agents, agentId]);
+
   useEffect(() => {
     if (me === null) window.location.href = "/";
     if (!me) return;
@@ -202,7 +207,13 @@ export default function ChatPage() {
       );
       await loadList();
     } catch (e) {
-      setError((e as Error).name === "AbortError" ? t("chat.cancelled") : (e as Error).message);
+      setError(
+        (e as Error).name === "AbortError"
+          ? t("chat.cancelled")
+          : e instanceof ApiRequestError && e.body?.error === "not_licensed"
+            ? t("chat.notLicensed")
+            : (e as Error).message,
+      );
       if ((e as Error).name !== "AbortError" && current) void open(current.id).catch(() => {});
     } finally {
       setBusy(false);
@@ -251,12 +262,26 @@ export default function ChatPage() {
           <h1 className="sr-only">{t("chat.srTitle")}</h1>
           {!current?.messages.length && !busy && (
             <div className="max-w-[760px] rounded-[16px] border border-dashed border-line-strong p-6 text-ink-2">
-              <p className="font-semibold">{t("chat.emptyTitle")}</p>
-              <ul className="mt-2 list-disc pl-5 text-[13.5px] text-muted">
-                <li>{t("chat.example1")}</li>
-                <li>{t("chat.example2")}</li>
-                <li>{t("chat.example3")}</li>
-              </ul>
+              {/* The documents-only core assistant can't read live status or propose changes: other examples. */}
+              {(current?.agentId ?? agentId) === "knowledge-assistant" ? (
+                <>
+                  <p className="font-semibold">{t("chat.docs.emptyTitle")}</p>
+                  <ul className="mt-2 list-disc pl-5 text-[13.5px] text-muted">
+                    <li>{t("chat.docs.example1")}</li>
+                    <li>{t("chat.docs.example2")}</li>
+                    <li>{t("chat.docs.example3")}</li>
+                  </ul>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold">{t("chat.emptyTitle")}</p>
+                  <ul className="mt-2 list-disc pl-5 text-[13.5px] text-muted">
+                    <li>{t("chat.example1")}</li>
+                    <li>{t("chat.example2")}</li>
+                    <li>{t("chat.example3")}</li>
+                  </ul>
+                </>
+              )}
             </div>
           )}
           <ol className="m-0 flex flex-col gap-5 p-0" aria-live="polite">

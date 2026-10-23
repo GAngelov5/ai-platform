@@ -51,13 +51,17 @@ export class ConversationsController {
 
   @Get("agents")
   agents(): AgentSummary[] {
-    return this.deps.agents.list().map((a) => ({ id: a.id, version: a.version, name: a.name, description: a.description, ...(a.localized ? { localized: a.localized } : {}) }));
+    return this.deps.agents
+      .list()
+      .filter((a) => this.deps.entitlements.agentAllowed(a.id))
+      .map((a) => ({ id: a.id, version: a.version, name: a.name, description: a.description, ...(a.localized ? { localized: a.localized } : {}) }));
   }
 
   @Post("conversations")
   async create(@Ctx() ctx: TrustedContext, @Body() body: unknown): Promise<ConversationSummary> {
     const { agentId } = CreateConversationRequestSchema.parse(body);
     if (!this.deps.agents.get(agentId)) throw new NotFoundOrForbiddenError();
+    this.deps.entitlements.assertAgent(agentId);
     const row = await this.deps.repos.conversations.create({
       customerId: ctx.customerId,
       ownerPrincipalId: ctx.principalId,
@@ -130,6 +134,8 @@ export class ConversationsController {
   ): Promise<PostMessageResponse> {
     const agent = this.deps.agents.get(c.agentId);
     if (!agent) throw new NotFoundOrForbiddenError();
+    // Checked on every question: an expired add-on stops answering in existing conversations too.
+    this.deps.entitlements.assertAgent(agent.id);
     const { repos } = this.deps;
     const principal = await repos.principals.get(ctx.customerId, ctx.principalId);
     if (!principal || principal.disabled) throw new NotFoundOrForbiddenError();
@@ -208,7 +214,9 @@ export class ConversationsController {
   @Post("conversations/:id/messages/stream")
   async stream(@Ctx() ctx: TrustedContext, @Param("id") id: string, @Body() body: unknown, @Res() res: Response): Promise<void> {
     PostMessageRequestSchema.parse(body); // validate before opening the stream
-    await this.owned(ctx, id);
+    const c = await this.owned(ctx, id);
+    this.deps.entitlements.assertAgent(c.agentId); // a plain 403, not an error event
+
     res.status(200);
     res.setHeader("content-type", "text/event-stream; charset=utf-8");
     res.setHeader("cache-control", "no-store");

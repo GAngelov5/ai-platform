@@ -1,0 +1,50 @@
+{
+  "$comment": "Labeled synthetic evaluation questions for the core Knowledge Assistant (fixtures/documents).",
+  "cases": [
+    {
+      "id": "delay-why",
+      "principal": "alice",
+      "question": "Why was Project Atlas delayed?",
+      "expect": "answered",
+      "supportingDocuments": ["atlas-status-2026-04", "atlas-steering-2026-05-12"],
+      "mustMention": ["Northwind"],
+      "mustNotContain": ["FORBIDDEN-CANARY-7Q4X", "settlement"]
+    },
+    {
+      "id": "relocation",
+      "principal": "bob",
+      "question": "When does the head office move to the new building?",
+      "expect": "answered",
+      "supportingDocuments": ["office-relocation-faq"],
+      "mustMention": ["3 August 2026"],
+      "mustNotContain": ["Northwind", "Atlas"]
+    },
+    {
+      "id": "leave-bg",
+      "principal": "bob",
+      "question": "Колко дни платен годишен отпуск имам?",
+      "expect": "answered",
+      "supportingDocuments": ["handbook-otpuski-bg"],
+      "mustMention": ["20"],
+      "mustNotContain": ["Northwind"]
+    },
+    {
+      "id": "denied-principal",
+      "principal": "bob",
+      "question": "Why was Project Atlas delayed?",
+      "expect": "insufficient_evidence",
+      "supportingDocuments": [],
+      "mustMention": [],
+      "mustNotContain": ["Northwind", "Atlas Status Report", "Steering", "FORBIDDEN-CANARY-7Q4X"]
+    },
+    {
+      "id": "live-status-stays-documents-only",
+      "principal": "alice",
+      "question": "What is the current status of the Atlas migration task ATLAS-142?",
+      "expect": "any",
+      "supportingDocuments": [],
+      "mustMention": [],
+      "mustNotContain": ["FORBIDDEN-CANARY-7Q4X"]
+    }
+  ]
+}

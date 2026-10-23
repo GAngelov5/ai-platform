@@ -179,6 +179,37 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  agents/knowledge-assistant:
+    dependencies:
+      '@platform/agents':
+        specifier: workspace:*
+        version: link:../../packages/agents
+    devDependencies:
+      '@platform/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
+      '@platform/connectors':
+        specifier: workspace:*
+        version: link:../../packages/connectors
+      '@platform/knowledge':
+        specifier: workspace:*
+        version: link:../../packages/knowledge
+      '@platform/mcp-atlas-tracker':
+        specifier: workspace:*
+        version: link:../../services/mcp-atlas-tracker
+      '@platform/security':
+        specifier: workspace:*
+        version: link:../../packages/security
+      '@types/node':
+        specifier: ^24
+        version: 24.19.1
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@types/node@24.19.1)(vite@8.3.2(@types/node@24.19.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
+
   agents/meeting-prep:
     dependencies:
       '@platform/agents':
@@ -249,6 +280,9 @@ importers:
       '@platform/actions':
         specifier: workspace:*
         version: link:../../packages/actions
+      '@platform/agent-knowledge-assistant':
+        specifier: workspace:*
+        version: link:../../agents/knowledge-assistant
       '@platform/agent-meeting-prep':
         specifier: workspace:*
         version: link:../../agents/meeting-prep

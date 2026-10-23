@@ -458,7 +458,7 @@ describe("second agent and scheduled workflows (Stage 3c)", () => {
   it("lists both agents and starts a Meeting Preparation conversation", async () => {
     const alice = await as("alice");
     const agents = await alice.req("GET", "/api/agents");
-    expect(agents.json.map((a: { id: string }) => a.id).sort()).toEqual(["meeting-prep", "project-assistant"]);
+    expect(agents.json.map((a: { id: string }) => a.id).sort()).toEqual(["knowledge-assistant", "meeting-prep", "project-assistant"]);
     expect((await alice.req("POST", "/api/conversations", { agentId: "meeting-prep" })).status).toBe(201);
   });
 
@@ -549,7 +549,7 @@ describe("admin console (ADR 0012)", () => {
     const q = (await dana.req("GET", "/api/admin/sources/team-share/quarantine")).json;
     expect(q[0]).toMatchObject({ externalId: "atlas/architecture-diagram.pdf", reason: "needs_ocr" });
     expect((await dana.req("GET", "/api/admin/sources/no-such-source/quarantine")).status).toBe(404);
-    expect((await dana.req("GET", "/api/admin/agents")).json.map((a: { id: string }) => a.id).sort()).toEqual(["meeting-prep", "project-assistant"]);
+    expect((await dana.req("GET", "/api/admin/agents")).json.map((a: { id: string }) => a.id).sort()).toEqual(["knowledge-assistant", "meeting-prep", "project-assistant"]);
     const integrations = (await dana.req("GET", "/api/admin/integrations")).json;
     expect(integrations[0]).toMatchObject({ id: "atlas-tracker" });
     expect(integrations[0].tools.every((t: { enabled: boolean }) => t.enabled)).toBe(true);
@@ -602,5 +602,71 @@ describe("development authentication switch", () => {
     } finally {
       await off.app.close();
     }
+  });
+});
+
+describe("licence and entitlements (ADR 0014)", () => {
+  const LICENCES = fileURLToPath(new URL("../../../fixtures/licence/", import.meta.url));
+  const withLicence = async (file: string, fn: (b: string) => Promise<void>) => {
+    const other = await boot({ LICENCE_FILE: `${LICENCES}${file}` });
+    try {
+      await fn(other.base);
+    } finally {
+      await other.app.close();
+      await other.deps.connectors.closeAll();
+    }
+  };
+
+  it("the development licence includes every shipped agent and the status check", async () => {
+    const alice = await as("alice");
+    expect((await alice.req("GET", "/api/agents")).json.map((a: { id: string }) => a.id).sort()).toEqual(["knowledge-assistant", "meeting-prep", "project-assistant"]);
+    const lic = (await (await as("dana")).req("GET", "/api/admin/licence")).json;
+    expect(lic).toMatchObject({ status: "valid", licenceId: "lic_dev_demo", agents: ["project-assistant", "meeting-prep"], coreAgents: ["knowledge-assistant"] });
+    expect(JSON.stringify(lic)).not.toContain("signature");
+    // Admin routes answer non-admins as if they didn't exist (ADR 0012).
+    expect((await alice.req("GET", "/api/admin/licence")).status).toBe(404);
+  });
+
+  it("a core-only licence leaves the Knowledge Assistant and refuses add-ons, also in existing conversations", async () => {
+    const before = await as("alice");
+    const existing = (await before.req("POST", "/api/conversations", { agentId: "project-assistant" })).json.id as string;
+    await withLicence("dev-core-only.licence.json", async (b) => {
+      const alice = await new Client(b).login("alice");
+      expect((await alice.req("GET", "/api/agents")).json.map((a: { id: string }) => a.id)).toEqual(["knowledge-assistant"]);
+      const refused = await alice.req("POST", "/api/conversations", { agentId: "project-assistant" });
+      expect(refused.status).toBe(403);
+      expect(refused.json).toMatchObject({ error: "not_licensed" });
+      const old = await alice.req("POST", `/api/conversations/${existing}/messages`, { content: "Why was Project Atlas delayed?" });
+      expect(old.status).toBe(403);
+      expect(old.json.error).toBe("not_licensed");
+
+      const conv = await alice.req("POST", "/api/conversations", { agentId: "knowledge-assistant" });
+      expect(conv.status).toBe(201);
+      const r = await alice.req("POST", `/api/conversations/${conv.json.id}/messages`, { content: "Why was Project Atlas delayed?" });
+      expect(r.json.assistantMessage.status).toBe("answered");
+      expect(r.json.assistantMessage.toolCalls.every((t: { capabilityId: string }) => t.capabilityId === "knowledge.search")).toBe(true);
+
+      expect((await alice.req("GET", "/api/workflow-kinds")).json).toEqual([]);
+      const wf = await alice.req("POST", "/api/workflows", { kind: "tracker-status-check", config: { project: "ATLAS" }, intervalMinutes: 60 });
+      expect(wf.status).toBe(403);
+
+      const dana = await new Client(b).login("dana");
+      const agents = (await dana.req("GET", "/api/admin/agents")).json as { id: string; licensed: boolean; core: boolean }[];
+      expect(agents.find((a) => a.id === "project-assistant")).toMatchObject({ licensed: false, core: false });
+      expect(agents.find((a) => a.id === "knowledge-assistant")).toMatchObject({ licensed: true, core: true });
+    });
+  });
+
+  it("an expired licence (past its grace period) falls back to the core agent and says so to admins", async () => {
+    await withLicence("dev-expired.licence.json", async (b) => {
+      const alice = await new Client(b).login("alice");
+      expect((await alice.req("GET", "/api/agents")).json.map((a: { id: string }) => a.id)).toEqual(["knowledge-assistant"]);
+      const o = (await (await new Client(b).login("dana")).req("GET", "/api/admin/overview")).json;
+      expect(o.licence).toMatchObject({ status: "expired", licenceId: "lic_dev_expired" });
+    });
+  });
+
+  it("refuses to start with a licence for another customer", async () => {
+    await expect(boot({ CUSTOMER_ID: "cust_other", LICENCE_FILE: `${LICENCES}dev.licence.json` })).rejects.toThrow(/licence is for customer cust_demo/);
   });
 });

@@ -58,6 +58,7 @@ const EnvSchema = z.object({
   KNOWLEDGE_INCLUDE_EVAL_CORPUS: bool.default(false),
   /** JSON allowlist of MCP servers with pinned tool hashes (see packages/connectors McpServersSchema). */
   MCP_SERVERS: z.string().optional(),
+  LICENCE_FILE: z.string().min(1).optional(),
   ACTION_PROPOSAL_TTL_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(30),
 
   MODEL_MODE: z.enum(["local", "hybrid"]).default("local"),
@@ -75,6 +76,8 @@ export interface PlatformConfig {
   brandName: string;
   policyVersion: string;
   logLevel: string;
+  /** Signed licence (ADR 0014); outside production the development licence is the default. */
+  licenceFile?: string;
   databaseUrl?: string;
   redisUrl?: string;
   api: { port: number; publicOrigin: string; cookieSecure: boolean; sessionTtlMinutes: number };
@@ -133,6 +136,7 @@ export function loadPlatformConfig(
   const problems: string[] = [];
   const prod = e.APP_ENV === "production";
 
+  if (prod && !e.LICENCE_FILE) problems.push("production requires LICENCE_FILE (a signed licence)");
   if (opts.requireDatabase && !e.DATABASE_URL) problems.push("DATABASE_URL is required");
   if (opts.requireRedis && !e.REDIS_URL) problems.push("REDIS_URL is required");
 
@@ -236,6 +240,7 @@ export function loadPlatformConfig(
     brandName: e.BRAND_NAME,
     policyVersion: e.POLICY_VERSION,
     logLevel: e.LOG_LEVEL,
+    licenceFile: e.LICENCE_FILE,
     databaseUrl: e.DATABASE_URL,
     redisUrl: e.REDIS_URL,
     api: {

@@ -3,7 +3,7 @@
 A living document: what is done, what is next, and the decisions waiting for
 you. Each finished stage links to its evidence (ADR, tests, live checks).
 
-Last updated: 2026-10-22
+Last updated: 2026-10-23
 
 ## Done
 
@@ -16,6 +16,7 @@ Last updated: 2026-10-22
 | UI · Forest design | Workspace with context panel, Inbox, account menu, Your connections | commit 51c3d73 · design canvas |
 | 3a · Source ingestion | `SourceAdapter` contract, generic pipeline, folder adapter with inherited ACLs, quarantine, content store, partitions per access set, scheduled ingest → sync | ADR 0009 · 98 tests · `scripts/lightrag-live-check.mjs` (23/23, 2026-10-22) |
 | 3b · Knowledge selection gate *(retrieval part)* | PDF/DOCX parsing in an isolated worker thread, 110-file synthetic corpus, 34 labeled questions, HTTP eval harness (base + hard sets), platform-side version handling, optional semantic evidence score | ADR 0010 · `docs/eval/` (lexical + LightRAG) · 113 tests |
+| Licence and core assistant | Signed licence file (Ed25519, verified offline), core Knowledge Assistant always available, add-on agents and workflow kinds enforced on every request and run, 14-day grace, admin licence panel and expiry warnings | ADR 0014 · 176 tests |
 | Bulgarian language | Cyrillic-aware search (tokenizer, light Bulgarian stemmer, stopwords), collision-free IDs for Cyrillic file names, answers and platform messages in the question's language, EN/БГ UI switch across all pages, localized agent names | ADR 0013 · 154 tests |
 | Admin console | Operator console (Overview, Sources with Sync now and quarantine, Integrations and pins, Agents, Actions with reconcile, Workflows, Audit); `admin` role with no document access; metadata only, never content | ADR 0012 · 144 tests |
 | 3c · Second agent and workflow | Meeting Preparation Assistant (definition only) with a synthetic calendar MCP; durable scheduled status-check workflow (PostgreSQL state, BullMQ trigger, deduplicated proposals, one approval per write); Inbox → Scheduled checks | ADR 0011 · 129 tests · `scripts/stage3c-live-check.mjs` |
@@ -38,17 +39,31 @@ Last updated: 2026-10-22
      This needs real model answers, and waits for the model and hardware
      decision below.
    - OCR for scans.
-3. **Entitlements and the core Knowledge Assistant:** a signed licence file
-   listing the agents and workflow kinds a customer has, shown on the admin
-   Agents tab; split the Project Assistant into a read-only core assistant
-   and the paid project add-on.
-4. **Stage 4 · Production hardening:** OIDC, secrets manager, image slimming
+3. **Stage 4 · Production hardening:** OIDC, secrets manager, image slimming
    and scanning, egress tests in CI, backup and restore drills,
    OpenTelemetry, Playwright.
-5. **Stage 5 · Customer packaging:** runbooks, a second customer
+   Includes the first **production licence signing key** (ADR 0014).
+4. **Stage 5 · Customer packaging:** runbooks, a second customer
    configuration, supervised pilot.
 
 ## Notes from the last stage (to check)
+
+**Licence and core assistant**
+- **What a customer always has:** the Knowledge Assistant (documents only,
+  no live tools, no writes), even with an expired or missing licence.
+- **Add-ons:** Project Assistant, Meeting Preparation and the tracker status
+  check. They are listed in the licence, keep working for 14 days after
+  expiry (with a warning), and then stop. The check is made on every
+  question and every workflow run, including in existing conversations.
+- **A wrong licence stops startup:** tampered, another customer's, or the
+  development key in production.
+- **Honest limit:** on-premises this is contract enforcement, not DRM. The
+  customer runs the code.
+- **Not done:** there is no production signing key yet (Stage 4). There are
+  no seat limits, and a renewal needs a restart.
+- **Fixed after the browser check:** the chat's example questions included
+  "Add a comment to ATLAS-180" for every assistant. The Knowledge Assistant
+  now has its own documents-only examples.
 
 **Bulgarian language**
 - **Bug fixed:** Bulgarian text was unsearchable, because the tokenizer kept
@@ -181,6 +196,8 @@ Last updated: 2026-10-22
 
 ## Decisions waiting for you
 
+- **Pricing units for the licence:** per agent, per workflow, seats? The
+  file format can add fields when you decide.
 - **Model size and speed.** `qwen3:4b` on CPU takes 2–6 minutes per answer.
   Options: a GPU host, or Ollama natively with Metal on the Mac, or a larger
   model.

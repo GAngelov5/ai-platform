@@ -50,7 +50,7 @@ warning. Sign in through the dev login and choose a user.
 **Automated checks first.** If these fail, stop and report the failure:
 
 ```bash
-pnpm typecheck && pnpm test                       # ~1 min; 16 packages, ~130 tests
+pnpm typecheck && pnpm test                       # ~1 min; 17 packages, ~176 tests
 SMOKE_BASE_URL=https://localhost:8443 SMOKE_INSECURE_TLS=1 pnpm smoke
 ```
 
@@ -236,6 +236,24 @@ Sign in as **Dana** (operator: `admin` role, all-staff documents only). An
 
 Note: with the real CPU model, Bulgarian answer quality is not yet
 evaluated (ADR 0013).
+
+## 12. Licence and the core Knowledge Assistant
+
+The stack uses the development licence unless `LICENCE_FILE` is set
+(`fixtures/licence/README.md` lists the test licences).
+
+| # | User | Do | Expect |
+|---|---|---|---|
+| 12.1 | Dana | **Admin → Agents** | A **Licence** panel: `valid`, about 3650 days left, `lic_dev_demo`, workflow kinds `tracker-status-check`. Knowledge Assistant is marked **core · always included**; the other two **licensed**. |
+| 12.2 | Alice | **Assistants** | Three assistants, including **Knowledge Assistant** («Асистент за знания» in БГ). |
+| 12.3 | Alice | Knowledge Assistant: "What is the current status of the Atlas migration task?" | An answer from documents only. The run shows only `knowledge.search`: no tracker call, no approval card. |
+| 12.4 | — | Switch to the core-only licence: `LICENCE_FILE=/repo/fixtures/licence/dev-core-only.licence.json $C up -d api worker` | The API log line "api started" shows `lic_dev_core_only`. |
+| 12.5 | Alice | Reload **Assistants**, then open an earlier Project Assistant conversation and ask again | Only the Knowledge Assistant is listed. The old conversation says the assistant isn't included in the licence. |
+| 12.6 | Alice | **Inbox → Scheduled checks** | Existing checks stay listed, but adding one fails, and their next runs fail with `not licensed: workflow tracker-status-check` (Admin → Workflows). |
+| 12.7 | Dana | **Admin → Agents** | Project Assistant and Meeting Preparation are marked **not licensed**. |
+| 12.8 | — | Expired licence: `LICENCE_FILE=/repo/fixtures/licence/dev-expired.licence.json $C up -d api worker` | Admin **Overview** shows a red notice that the licence expired on 1 September 2026 and only the Knowledge Assistant is available. |
+| 12.9 | — | Tamper: copy `dev.licence.json`, add an agent to `agents`, and point `LICENCE_FILE` at the copy | The API does not start: `licence signature is invalid` (exit code 78). |
+| 12.10 | — | Restore: `LICENCE_FILE= $C up -d api worker` | Back to 12.1. |
 
 ## What you can't test yet (and why)
 

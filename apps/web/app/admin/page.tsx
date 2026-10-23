@@ -103,6 +103,7 @@ function Overview() {
   if (!o) return <p className="text-muted">{t("common.loading")}</p>;
   return (
     <div className="flex flex-col gap-6">
+      {o.licence && <LicenceNotice l={o.licence} />}
       <section aria-label={t("admin.services")}>
         <h2 className="mb-2 text-[17px] font-bold">{t("admin.services")}</h2>
         <Table
@@ -265,27 +266,78 @@ function Integrations() {
   );
 }
 
-function Agents() {
+const LICENCE_TONE: Record<string, "ok" | "warn" | "alert" | "muted"> = { valid: "ok", grace: "warn", expired: "alert", none: "alert" };
+
+/** Dates on a licence need the year, unlike the console's other timestamps. */
+function useDay() {
+  const { lang } = useT();
+  return (iso?: string) => (iso ? new Date(iso).toLocaleDateString(lang === "bg" ? "bg-BG" : "en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—");
+}
+
+/** The warning for a licence that is expiring, in grace, expired or missing; nothing when all is well. */
+function LicenceNotice({ l }: { l: any }) {
   const { t } = useT();
+  const day = useDay();
+  const text =
+    l.status === "none"
+      ? t("admin.licence.none")
+      : l.status === "expired"
+        ? t("admin.licence.expired", { date: day(l.expiresAt) })
+        : l.status === "grace"
+          ? t("admin.licence.grace", { date: day(l.expiresAt), end: day(l.graceEndsAt) })
+          : l.daysLeft < 30
+            ? t("admin.licence.expiresSoon", { n: l.daysLeft, date: day(l.expiresAt) })
+            : undefined;
+  if (!text) return null;
+  const alert = l.status === "expired" || l.status === "none";
+  return (
+    <p role={alert ? "alert" : "status"} className={`rounded-xl px-3.5 py-3 text-sm ${alert ? "bg-alert-bg text-alert-ink" : "bg-warn-bg text-warn-ink"}`}>
+      {text}
+    </p>
+  );
+}
+
+function Agents() {
+  const { t, tm } = useT();
+  const day = useDay();
   const { data, error } = useLoad<any[]>("/api/admin/agents");
+  const { data: l } = useLoad<any>("/api/admin/licence");
   if (error) return <ErrorText error={error} />;
   return (
-    <Table
-      head={[t("admin.col.agent"), t("admin.capabilities"), t("admin.col.knowledgeSources"), t("admin.col.limits")]}
-      rows={(data ?? []).map((a) => [
-        <div key="a">
-          <p className="font-bold">{a.name}</p>
-          <p className="text-xs text-muted">
-            {a.id}@{a.version}
+    <div className="flex flex-col gap-4">
+      {l && (
+        <section aria-label={t("admin.licence")} className="flex flex-col gap-2 rounded-[14px] border border-line bg-surface p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-[17px] font-bold">{t("admin.licence")}</h2>
+            <Pill tone={LICENCE_TONE[l.status] ?? "muted"}>{tm(`admin.licence.status.${l.status}`, l.status)}</Pill>
+            {l.status === "valid" && <span className="text-[13px] text-muted">{t("admin.licence.daysLeft", { n: l.daysLeft })}</span>}
+          </div>
+          {l.licenceId && <p className="text-[13.5px] text-muted">{t("admin.licence.line", { name: l.customerName, id: l.licenceId, date: day(l.expiresAt) })}</p>}
+          <p className="text-[13.5px]">
+            <span className="font-semibold">{t("admin.licence.workflows")}:</span>{" "}
+            <span className="font-mono text-[12.5px]">{l.workflowKinds.length ? l.workflowKinds.join(", ") : t("admin.licence.noWorkflows")}</span>
           </p>
-        </div>,
-        <span key="c" className="font-mono text-[12.5px]">
-          {a.capabilities.join(", ")}
-        </span>,
-        a.sourceIds.join(", "),
-        t("admin.limits", { tools: a.limits.maxToolCalls, min: Math.round(a.limits.maxDurationMs / 60000), score: a.limits.minEvidenceScore }),
-      ])}
-    />
+          <LicenceNotice l={l} />
+        </section>
+      )}
+      <Table
+        head={[t("admin.col.agent"), t("admin.col.licence"), t("admin.capabilities"), t("admin.col.knowledgeSources"), t("admin.col.limits")]}
+        rows={(data ?? []).map((a) => [
+          <div key="a">
+            <p className="font-bold">{a.name}</p>
+            <p className="text-xs text-muted">
+              {a.id}@{a.version}
+            </p>
+          </div>,
+          a.core ? <Pill key="l" tone="ok">{t("admin.core")}</Pill> : a.licensed ? <Pill key="l" tone="ok">{t("admin.licensed")}</Pill> : <Pill key="l" tone="muted">{t("admin.notLicensed")}</Pill>,
+          <span key="c" className="font-mono text-[12.5px]">
+            {a.capabilities.join(", ")}
+          </span>,
+          a.sourceIds.join(", "),
+          t("admin.limits", { tools: a.limits.maxToolCalls, min: Math.round(a.limits.maxDurationMs / 60000), score: a.limits.minEvidenceScore }),
+        ])}
+      />
+    </div>
   );
 }
 
