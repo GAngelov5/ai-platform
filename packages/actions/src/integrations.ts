@@ -1,5 +1,17 @@
 import { CapabilityRegistry } from "@platform/agents";
-import { ConnectorRegistry, McpConnector, McpServersSchema, registerAtlasTrackerCapabilities, registerCalendarCapabilities } from "@platform/connectors";
+import {
+  ConnectorRegistry,
+  GoogleCalendarConnector,
+  GoogleOAuthClient,
+  McpConnector,
+  McpServersSchema,
+  PersonalConnectionStore,
+  registerAtlasTrackerCapabilities,
+  registerCalendarCapabilities,
+  type GoogleEndpoints,
+  type SealedConnectionRows,
+} from "@platform/connectors";
+import { SecretSealer } from "@platform/security";
 import type { AuditInput, Database, PrincipalRecord } from "@platform/database";
 import { ActionService } from "./index.js";
 
@@ -14,6 +26,17 @@ export interface IntegrationsInput {
   proposalTtlMinutes: number;
   onSecurityEvent?: (type: string, detail: Record<string, unknown>) => void;
   log?: (msg: string, detail?: Record<string, unknown>) => void;
+  /** Personal Google connections (ADR 0015). When set, the user's Google Calendar backs calendar.events.list. */
+  google?: {
+    customerId: string;
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
+    encryptionKey: string;
+    rows: SealedConnectionRows;
+    /** Tests only: a local fake of Google's endpoints. */
+    endpoints?: GoogleEndpoints;
+  };
 }
 
 /**
@@ -25,6 +48,16 @@ export function buildIntegrations(i: IntegrationsInput) {
   const connectors = new ConnectorRegistry();
   const capabilities = new CapabilityRegistry();
   const servers = i.mcpServersJson ? McpServersSchema.parse(JSON.parse(i.mcpServersJson)) : [];
+  let google: { oauth: GoogleOAuthClient; store: PersonalConnectionStore } | undefined;
+  if (i.google) {
+    const g = i.google;
+    const oauth = new GoogleOAuthClient({ clientId: g.clientId, clientSecret: g.clientSecret, redirectUri: g.redirectUri }, g.endpoints);
+    const store = new PersonalConnectionStore(g.rows, new SecretSealer(g.encryptionKey));
+    const c = new GoogleCalendarConnector({ customerId: g.customerId, oauth, store, endpoints: g.endpoints });
+    connectors.register(c);
+    registerCalendarCapabilities(capabilities, c);
+    google = { oauth, store };
+  }
   for (const srv of servers) {
     const token = i.secret(i.tokenVar(srv.id));
     if (!token) throw new Error(`missing token for MCP server ${srv.id}`);
@@ -32,7 +65,11 @@ export function buildIntegrations(i: IntegrationsInput) {
     connectors.register(c);
     // Capability bindings are platform code keyed by server id; unknown servers expose nothing.
     if (srv.id === "atlas-tracker") registerAtlasTrackerCapabilities(capabilities, c);
-    else if (srv.id === "calendar") registerCalendarCapabilities(capabilities, c);
+    else if (srv.id === "calendar") {
+      // A real calendar wins over the synthetic one: one capability, one source of truth.
+      if (google) i.log?.("Google Calendar is configured; the synthetic calendar MCP is not exposed", { server: srv.id });
+      else registerCalendarCapabilities(capabilities, c);
+    }
     else i.log?.("MCP server has no capability bindings; nothing exposed", { server: srv.id });
   }
   const actions = new ActionService({
@@ -44,5 +81,5 @@ export function buildIntegrations(i: IntegrationsInput) {
     ttlMs: i.proposalTtlMinutes * 60_000,
     log: i.log,
   });
-  return { connectors, capabilities, actions };
+  return { connectors, capabilities, actions, google };
 }

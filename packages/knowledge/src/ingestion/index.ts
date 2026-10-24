@@ -5,3 +5,4 @@ export * from "./pipeline.js";
 export * from "./fixture-source.js";
 export * from "./folder-source.js";
 export * from "./sources.js";
+export * from "./notion-source.js";

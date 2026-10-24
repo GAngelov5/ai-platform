@@ -13,6 +13,7 @@ import { HealthController } from "./controllers/health.controller.js";
 import { KnowledgeController } from "./controllers/knowledge.controller.js";
 import { WorkflowsController } from "./controllers/workflows.controller.js";
 import { AdminController } from "./controllers/admin.controller.js";
+import { ConnectionsController } from "./controllers/connections.controller.js";
 import type { PlatformDeps } from "./deps.js";
 import { PlatformErrorFilter } from "./errors.js";
 import { DEPS } from "./tokens.js";
@@ -25,7 +26,7 @@ class AppModule {
   static register(deps: PlatformDeps): DynamicModule {
     return {
       module: AppModule,
-      controllers: [HealthController, AuthController, KnowledgeController, ConversationsController, ActionsController, WorkflowsController, AdminController],
+      controllers: [HealthController, AuthController, KnowledgeController, ConversationsController, ActionsController, WorkflowsController, AdminController, ConnectionsController],
       providers: [{ provide: DEPS, useValue: deps }],
     };
   }

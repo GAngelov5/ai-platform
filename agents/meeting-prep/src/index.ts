@@ -22,7 +22,7 @@ Then, for each agenda item, look up relevant decisions, history and figures in t
 Answer as a briefing: the meeting (title, time, attendees), then one bullet per agenda item with the key facts, then open questions or risks to raise.
 Only state what the calendar, documents or tracker say. If nothing relevant is found for an agenda item, say so.`,
   capabilities: ["calendar.events.list", "knowledge.search", "tracker.task.status"],
-  knowledgeScopes: { sourceIds: ["atlas-project-docs", "company-handbook", "team-share"] },
+  knowledgeScopes: { sourceIds: ["atlas-project-docs", "company-handbook", "team-share", "notion"] },
   outputSchema: "cited-answer@1",
   limits: {
     maxToolCalls: 6,

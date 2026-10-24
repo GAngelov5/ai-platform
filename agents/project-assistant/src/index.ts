@@ -18,7 +18,7 @@ Explain project history, decisions, delays and blockers from the documents, and 
 Be concise: a short summary sentence, then the key points as bullet points.
 Never speculate about causes that the evidence does not state.`,
   capabilities: ["knowledge.search", "tracker.tasks.list", "tracker.task.status", "tracker.task.comment"],
-  knowledgeScopes: { sourceIds: ["atlas-project-docs", "company-handbook", "team-share"] },
+  knowledgeScopes: { sourceIds: ["atlas-project-docs", "company-handbook", "team-share", "notion"] },
   outputSchema: "cited-answer@1",
   limits: {
     maxToolCalls: 4,

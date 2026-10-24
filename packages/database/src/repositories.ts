@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt } from "drizzle-orm";
 import type { Database } from "./client.js";
 import {
   agentRuns,
@@ -8,6 +8,8 @@ import {
   issuedEvidence,
   liveEvidence,
   messages,
+  oauthStates,
+  personalConnections,
   principals,
   sessions,
   sourceDocuments,
@@ -436,6 +438,56 @@ export function createRepositories(db: Database) {
             finishedAt: new Date(),
           })
           .where(eq(agentRuns.id, id));
+      },
+    },
+
+    /** Sealed personal connection tokens (ADR 0015); sealing happens in the connectors package. */
+    connections: {
+      async get(customerId: string, principalId: string, provider: string) {
+        const [row] = await db
+          .select()
+          .from(personalConnections)
+          .where(and(eq(personalConnections.customerId, customerId), eq(personalConnections.principalId, principalId), eq(personalConnections.provider, provider)));
+        return row;
+      },
+      async upsert(row: {
+        customerId: string;
+        principalId: string;
+        provider: string;
+        accountEmail: string | null;
+        scopes: string[];
+        accessTokenSealed: string;
+        refreshTokenSealed: string | null;
+        accessTokenExpiresAt: Date;
+      }): Promise<void> {
+        const { customerId: _c, principalId: _p, provider: _v, ...rest } = row;
+        await db
+          .insert(personalConnections)
+          .values(row)
+          .onConflictDoUpdate({
+            target: [personalConnections.customerId, personalConnections.principalId, personalConnections.provider],
+            // Keep an earlier refresh token when Google doesn't send a new one.
+            set: { ...rest, refreshTokenSealed: row.refreshTokenSealed ?? undefined, updatedAt: new Date() },
+          });
+      },
+      async delete(customerId: string, principalId: string, provider: string): Promise<boolean> {
+        const r = await db
+          .delete(personalConnections)
+          .where(and(eq(personalConnections.customerId, customerId), eq(personalConnections.principalId, principalId), eq(personalConnections.provider, provider)))
+          .returning({ id: personalConnections.id });
+        return r.length > 0;
+      },
+    },
+
+    oauthStates: {
+      async create(row: { state: string; customerId: string; principalId: string; provider: string; browserNonceHash: string; codeVerifier: string; expiresAt: Date }) {
+        await db.delete(oauthStates).where(lt(oauthStates.expiresAt, new Date()));
+        await db.insert(oauthStates).values(row);
+      },
+      /** Single use: the row is deleted as it is read, so a replayed callback finds nothing. */
+      async take(state: string, now = new Date()) {
+        const [row] = await db.delete(oauthStates).where(eq(oauthStates.state, state)).returning();
+        return row && row.expiresAt > now ? row : undefined;
       },
     },
 

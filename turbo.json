@@ -2,8 +2,14 @@
   "$schema": "https://turborepo.com/schema.json",
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**",
+        ".next/**",
+        "!.next/cache/**"
+      ]
     },
     "typecheck": {
       "dependsOn": []
@@ -13,9 +19,22 @@
       "outputs": []
     },
     "dev": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "passThroughEnv": [
+        "LICENCE_FILE",
+        "GOOGLE_OAUTH_CLIENT_ID",
+        "GOOGLE_OAUTH_CLIENT_SECRET",
+        "CONNECTION_ENCRYPTION_KEY",
+        "NOTION_TOKEN",
+        "NOTION_ACL_GROUPS",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "NODE_USE_ENV_PROXY"
+      ]
     }
   }
 }

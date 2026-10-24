@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useT } from "@platform/ui";
 import { api } from "../../lib/api";
 import { useSession } from "../../lib/useSession";
@@ -14,7 +14,97 @@ interface Capability {
   connectorId: string | null;
 }
 
-const INITIALS: Record<string, string> = { "atlas-tracker": "AT", calendar: "CA" };
+const INITIALS: Record<string, string> = { "atlas-tracker": "AT", calendar: "CA", "google-calendar": "G" };
+
+interface PersonalConnection {
+  provider: "google";
+  configured: boolean;
+  connected: boolean;
+  accountEmail: string | null;
+  connectedAt: string | null;
+}
+
+/** Your own Google account (ADR 0015): connect, see which account, disconnect. */
+function GoogleCard() {
+  const { t, tm } = useT();
+  const [c, setC] = useState<PersonalConnection>();
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ text: string; ok: boolean }>();
+  const load = useCallback(async () => {
+    const list = await api<PersonalConnection[]>("/api/connections");
+    setC(list.find((x) => x.provider === "google"));
+  }, []);
+  useEffect(() => {
+    void load().catch(() => {});
+    // Result of the round trip through Google (?google=connected|cancelled|missing_scope|error).
+    const r = new URLSearchParams(window.location.search).get("google");
+    if (r) {
+      setNote({ text: tm(`conn.google.result.${r}`, t("conn.google.result.error")), ok: r === "connected" });
+      window.history.replaceState(null, "", "/connections");
+    }
+  }, [load, t, tm]);
+
+  const connect = async () => {
+    setBusy(true);
+    try {
+      const { url } = await api<{ url: string }>("/api/connections/google/start", { method: "POST" });
+      window.location.href = url;
+    } catch {
+      setNote({ text: t("conn.google.result.error"), ok: false });
+      setBusy(false);
+    }
+  };
+  const disconnect = async () => {
+    setBusy(true);
+    try {
+      const r = await api<{ revokedAtGoogle: boolean }>("/api/connections/google", { method: "DELETE" });
+      setNote({ text: r.revokedAtGoogle ? t("conn.google.disconnectedRevoked") : t("conn.google.disconnectedLocal"), ok: r.revokedAtGoogle });
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!c) return null;
+  return (
+    <section aria-label={t("connector.google-calendar")} className="rounded-[16px] border border-line bg-surface p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <span className="flex size-10 items-center justify-center rounded-xl bg-brand-soft font-bold text-brand">G</span>
+          <div>
+            <h2 className="text-[17px] font-bold">{t("connector.google-calendar")}</h2>
+            <p className="text-[13px] text-muted">{t("conn.google.sub")}</p>
+          </div>
+        </div>
+        {c.connected ? (
+          <span className="rounded-full bg-brand-soft px-2.5 py-0.5 text-xs font-bold text-brand">{t("conn.google.connected")}</span>
+        ) : (
+          !c.configured && <span className="rounded-full bg-panel px-2.5 py-0.5 text-xs font-bold text-ink-2">{t("chat.notAvailableTitle")}</span>
+        )}
+      </div>
+      <p className="mt-3.5 text-sm">{c.configured ? t("conn.google.text") : t("conn.google.notConfigured")}</p>
+      {c.connected && c.accountEmail && <p className="mt-2 text-[13px] text-muted">{t("conn.google.connectedAs", { email: c.accountEmail })}</p>}
+      {note && (
+        <p role="status" className={`mt-3 rounded-xl px-3.5 py-2.5 text-sm ${note.ok ? "bg-brand-soft text-brand" : "bg-warn-bg text-warn-ink"}`}>
+          {note.text}
+        </p>
+      )}
+      {c.configured && (
+        <div className="mt-4">
+          {c.connected ? (
+            <button type="button" disabled={busy} onClick={() => void disconnect()} className="min-h-10 cursor-pointer rounded-full border border-line-strong px-4 text-sm font-semibold hover:bg-panel disabled:opacity-60">
+              {t("conn.google.disconnect")}
+            </button>
+          ) : (
+            <button type="button" disabled={busy} onClick={() => void connect()} className="min-h-10 cursor-pointer rounded-full bg-brand px-4 text-sm font-semibold text-on-brand disabled:opacity-60">
+              {t("conn.google.connect")}
+            </button>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
 
 function CapabilityRow({ c }: { c: Capability }) {
   const { t, tm } = useT();
@@ -28,8 +118,8 @@ function CapabilityRow({ c }: { c: Capability }) {
 
 /**
  * Your connections: what your assistants can use, based on your groups and
- * your organization's configuration. Personal account connections (Microsoft
- * 365) arrive with the Graph connector in stage 2.
+ * your organization's configuration, plus your own Google account (ADR 0015).
+ * Microsoft 365 arrives with the Graph connector in stage 2.
  */
 export default function ConnectionsPage() {
   const { me, config, refresh } = useSession();
@@ -43,7 +133,8 @@ export default function ConnectionsPage() {
 
   const docs = caps?.filter((c) => c.id === "knowledge.search") ?? [];
   const connectors = new Map<string, Capability[]>();
-  for (const c of caps ?? []) if (c.connectorId) connectors.set(c.connectorId, [...(connectors.get(c.connectorId) ?? []), c]);
+  // Personal connections have their own card: they are on only once you connect them.
+  for (const c of caps ?? []) if (c.connectorId && c.connectorId !== "google-calendar") connectors.set(c.connectorId, [...(connectors.get(c.connectorId) ?? []), c]);
 
   return (
     <>
@@ -99,6 +190,8 @@ export default function ConnectionsPage() {
                 </section>
               );
             })}
+
+            {me && <GoogleCard />}
 
             <section aria-label="Microsoft 365" className="rounded-[16px] border border-line bg-surface p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">

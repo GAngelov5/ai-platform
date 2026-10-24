@@ -33,7 +33,7 @@ export interface ConnectorToolStatus {
 
 export interface Connector {
   readonly id: string;
-  readonly kind: "mcp" | "graph";
+  readonly kind: "mcp" | "graph" | "oauth";
   call(tool: string, args: Record<string, unknown>, opts: ConnectorCallOptions): Promise<ConnectorResult>;
   /** Tools that passed pinning/allowlist checks. */
   tools(): Promise<ConnectorToolStatus[]>;

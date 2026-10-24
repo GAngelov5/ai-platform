@@ -7,3 +7,4 @@ export * from "./config.js";
 export * from "./egress.js";
 export * from "./canonical.js";
 export * from "./licence.js";
+export * from "./seal.js";

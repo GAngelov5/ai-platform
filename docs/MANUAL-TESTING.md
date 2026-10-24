@@ -50,7 +50,7 @@ warning. Sign in through the dev login and choose a user.
 **Automated checks first.** If these fail, stop and report the failure:
 
 ```bash
-pnpm typecheck && pnpm test                       # ~1 min; 17 packages, ~176 tests
+pnpm typecheck && pnpm test                       # ~1 min; 18 packages, ~205 tests
 SMOKE_BASE_URL=https://localhost:8443 SMOKE_INSECURE_TLS=1 pnpm smoke
 ```
 
@@ -254,6 +254,25 @@ The stack uses the development licence unless `LICENCE_FILE` is set
 | 12.8 | — | Expired licence: `LICENCE_FILE=/repo/fixtures/licence/dev-expired.licence.json $C up -d api worker` | Admin **Overview** shows a red notice that the licence expired on 1 September 2026 and only the Knowledge Assistant is available. |
 | 12.9 | — | Tamper: copy `dev.licence.json`, add an agent to `agents`, and point `LICENCE_FILE` at the copy | The API does not start: `licence signature is invalid` (exit code 78). |
 | 12.10 | — | Restore: `LICENCE_FILE= $C up -d api worker` | Back to 12.1. |
+
+## 13. Google Calendar and Notion
+
+Needs your own Google OAuth client and Notion integration: follow
+[INTEGRATIONS-SETUP.md](INTEGRATIONS-SETUP.md) first.
+
+| # | User | Do | Expect |
+|---|---|---|---|
+| 13.1 | Alice | **Your connections** | A **Google Calendar** card with **Connect Google Calendar**. Without the Google settings, it says it is not set up yet. |
+| 13.2 | Alice | **Connect** → choose your Google account → allow | Back on Your connections: "Google Calendar is connected", "Connected as …". |
+| 13.3 | Alice | Connect again, but press **Cancel** at Google | "You cancelled the Google sign-in. Nothing was connected." The existing connection stays. |
+| 13.4 | Alice | Meeting Preparation Assistant: "Prepare me for my next meeting." | A briefing on your real next event, with a live citation `gcal-…`. With the real CPU model this takes minutes. |
+| 13.5 | Bob | Same question | Nothing from Alice's calendar. Bob's own calendar is "not connected". |
+| 13.6 | Alice | **Disconnect** | "Disconnected. Access was also revoked at Google." In your Google account → Security → Third-party access, the app is gone. |
+| 13.7 | Dana | **Admin → Audit**, filter `connection.` | `connection.google.connected` and `…disconnected` for alice. No token values anywhere. |
+| 13.8 | Dana | **Admin → Sources** | A `notion` source with the number of shared pages, indexed. |
+| 13.9 | Alice | Knowledge Assistant: ask about a fact on a shared Notion page | The answer cites the Notion page by its title. |
+| 13.10 | — | Unshare a page in Notion (⋯ → Connections → remove), then run `ingest notion` (setup §4) | The page is tombstoned; the same question no longer cites it. |
+| 13.11 | — | Docker only: `docker logs $(docker ps -qf name=egress-proxy)` | `egress` lines only for `oauth2.googleapis.com`, `www.googleapis.com` and `api.notion.com`. |
 
 ## What you can't test yet (and why)
 

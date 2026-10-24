@@ -12,6 +12,8 @@ import { loadPlatformConfig } from "@platform/security";
 import { seedFixtures } from "@platform/worker/seed";
 import { createTrackerHttpServer, TrackerStore } from "@platform/mcp-atlas-tracker";
 import { fetchMcpToolPins } from "@platform/connectors";
+import { FakeGoogle } from "@platform/connectors/testing";
+import { randomBytes } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { buildDeps, createApiApp, createLogger, type PlatformDeps } from "../src/app.js";
@@ -65,11 +67,11 @@ let trackerStore: TrackerStore;
 let mcpEnv: Record<string, string> = {};
 const MCP_TOKEN = "tracker-test-token-0123456789";
 
-async function boot(env: Record<string, string>) {
+async function boot(env: Record<string, string>, extra: Partial<Parameters<typeof buildDeps>[0]> = {}) {
   const all = { APP_ENV: "test", DEV_AUTH_ENABLED: "true", LOG_LEVEL: "fatal", ...mcpEnv, ...env };
   const config = loadPlatformConfig(all);
   model = new FakeModelGateway();
-  const d = await buildDeps({ config, db, logger: createLogger("fatal"), pingDatabase: async () => {}, model, secret: (n) => all[n as keyof typeof all] });
+  const d = await buildDeps({ config, db, logger: createLogger("fatal"), pingDatabase: async () => {}, model, secret: (n) => all[n as keyof typeof all], ...extra });
   const a = await createApiApp(d);
   await a.listen(0, "127.0.0.1");
   return { app: a, deps: d, base: (await a.getUrl()).replace("[::1]", "127.0.0.1") };
@@ -668,5 +670,117 @@ describe("licence and entitlements (ADR 0014)", () => {
 
   it("refuses to start with a licence for another customer", async () => {
     await expect(boot({ CUSTOMER_ID: "cust_other", LICENCE_FILE: `${LICENCES}dev.licence.json` })).rejects.toThrow(/licence is for customer cust_demo/);
+  });
+});
+
+describe("personal Google Calendar connection (ADR 0015)", () => {
+  let google: FakeGoogle;
+  let g: Awaited<ReturnType<typeof boot>>;
+  const ENV = {
+    GOOGLE_OAUTH_CLIENT_ID: "test-client",
+    GOOGLE_OAUTH_CLIENT_SECRET: "test-secret",
+    CONNECTION_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
+    PUBLIC_ORIGIN: "https://brain.example.test",
+  };
+
+  beforeAll(async () => {
+    google = await new FakeGoogle().start();
+    google.events["alice@example.test"] = [
+      {
+        id: "evt-g1",
+        summary: "Atlas go-live readiness review",
+        description: "Agenda: ATLAS-180 readiness",
+        start: { dateTime: new Date(Date.now() + 86_400_000).toISOString() },
+        end: { dateTime: new Date(Date.now() + 90_000_000).toISOString() },
+        attendees: [{ email: "carol@example.test" }],
+      },
+    ];
+    g = await boot(ENV, { googleEndpoints: google.endpoints });
+  });
+  afterAll(async () => {
+    await g?.app.close();
+    await g?.deps.connectors.closeAll();
+    google?.close();
+  });
+
+  /** The browser's return from Google: no session cookie (SameSite=Strict), only the nonce cookie. */
+  const callback = async (c: Client, query: Record<string, string>, opts: { withNonce?: boolean } = {}) => {
+    const nonce = c.cookies.get("platform_oauth_nonce");
+    const res = await fetch(`${g.base}/api/connections/google/callback?${new URLSearchParams(query)}`, {
+      redirect: "manual",
+      headers: opts.withNonce !== false && nonce ? { cookie: `platform_oauth_nonce=${nonce}` } : {},
+    });
+    return res.headers.get("location");
+  };
+  const start = async (c: Client) => {
+    const r = await c.req("POST", "/api/connections/google/start");
+    expect(r.status).toBe(200);
+    return new URL(r.json.url as string);
+  };
+
+  it("connects Alice's own calendar through Google, bound to her browser", async () => {
+    const alice = await new Client(g.base).login("alice");
+    expect((await alice.req("GET", "/api/connections")).json).toEqual([expect.objectContaining({ provider: "google", configured: true, connected: false })]);
+    const url = await start(alice);
+    expect(url.searchParams.get("redirect_uri")).toBe("https://brain.example.test/api/connections/google/callback");
+    const code = google.consent(url.toString(), { email: "alice@example.test" });
+    expect(await callback(alice, { state: url.searchParams.get("state")!, code })).toBe("/connections?google=connected");
+    expect((await alice.req("GET", "/api/connections")).json[0]).toMatchObject({ connected: true, accountEmail: "alice@example.test" });
+
+    // Nobody else sees or uses it.
+    const bob = await new Client(g.base).login("bob");
+    expect((await bob.req("GET", "/api/connections")).json[0]).toMatchObject({ connected: false, accountEmail: null });
+  });
+
+  it("refuses a callback from another browser (no nonce), and any replay", async () => {
+    const alice = await new Client(g.base).login("alice");
+    const url = await start(alice);
+    const state = url.searchParams.get("state")!;
+    const code = google.consent(url.toString(), { email: "attacker@example.test" });
+    // The link opened in a different browser: rejected, and the state is used up.
+    expect(await callback(alice, { state, code }, { withNonce: false })).toBe("/connections?google=error");
+    expect(await callback(alice, { state, code })).toBe("/connections?google=error");
+    expect((await alice.req("GET", "/api/connections")).json[0]).toMatchObject({ accountEmail: "alice@example.test" });
+    expect(await callback(alice, { state: "made-up", code: "x" })).toBe("/connections?google=error");
+  });
+
+  it("reports a cancelled consent, and requires a session to start", async () => {
+    const alice = await new Client(g.base).login("alice");
+    const url = await start(alice);
+    expect(await callback(alice, { state: url.searchParams.get("state")!, error: "access_denied" })).toBe("/connections?google=cancelled");
+    const anon = new Client(g.base);
+    await anon.req("GET", "/api/auth/csrf");
+    expect((await anon.req("POST", "/api/connections/google/start")).status).toBe(401);
+  });
+
+  it("the Meeting Preparation Assistant reads Alice's real calendar, and Bob gets nothing of hers", async () => {
+    const alice = await new Client(g.base).login("alice");
+    const conv = await alice.req("POST", "/api/conversations", { agentId: "meeting-prep" });
+    const r = await alice.req("POST", `/api/conversations/${conv.json.id}/messages`, { content: "Prepare me for my next meeting." });
+    const live = r.json.assistantMessage.citations.filter((c: { kind: string }) => c.kind === "live");
+    expect(live.map((c: { resourceId: string }) => c.resourceId)).toContain("gcal-evt-g1");
+    expect(google.calendarRequests.length).toBeGreaterThan(0);
+
+    const bob = await new Client(g.base).login("bob");
+    const bc = await bob.req("POST", "/api/conversations", { agentId: "meeting-prep" });
+    const br = await bob.req("POST", `/api/conversations/${bc.json.id}/messages`, { content: "Prepare me for my next meeting." });
+    expect(JSON.stringify(br.json)).not.toContain("go-live readiness review");
+  });
+
+  it("disconnects: revoked at Google, removed here, audited", async () => {
+    const alice = await new Client(g.base).login("alice");
+    const r = await alice.req("DELETE", "/api/connections/google");
+    expect(r.json).toEqual({ connected: false, revokedAtGoogle: true });
+    expect(google.revoked.length).toBe(1);
+    expect((await alice.req("GET", "/api/connections")).json[0]).toMatchObject({ connected: false });
+    const audit = (await (await new Client(g.base).login("dana")).req("GET", "/api/admin/audit?action=connection.")).json as { action: string; outcome: string }[];
+    expect(audit.map((a) => a.action)).toEqual(expect.arrayContaining(["connection.google.connected", "connection.google.disconnected", "connection.google.callback_rejected"]));
+    expect(JSON.stringify(audit)).not.toMatch(/at-\d|rt-\d/);
+  });
+
+  it("is off, with a clear state, when not configured", async () => {
+    const alice = await as("alice");
+    expect((await alice.req("GET", "/api/connections")).json[0]).toMatchObject({ configured: false, connected: false });
+    expect((await alice.req("POST", "/api/connections/google/start")).status).toBe(404);
   });
 });

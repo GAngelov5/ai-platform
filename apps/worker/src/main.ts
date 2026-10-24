@@ -52,7 +52,7 @@ async function main() {
       if (c.env === "production") throw new Error("refusing to seed synthetic fixtures in production");
       const h = connectDatabase(c.databaseUrl!, { max: 1 });
       try {
-        const r = await seedFixtures(h.db, FIXTURES_ROOT, c.customerId, c.ingestion.sourcesJson, { includeEvalCorpus: c.ingestion.includeEvalCorpus });
+        const r = await seedFixtures(h.db, FIXTURES_ROOT, c.customerId, c.ingestion.sourcesJson, { includeEvalCorpus: c.ingestion.includeEvalCorpus, notion: c.ingestion.notion });
         log.info(r, "synthetic fixtures seeded");
       } finally {
         await h.close();
@@ -103,7 +103,7 @@ async function main() {
       const h = connectDatabase(c.databaseUrl!, { max: 2 });
       try {
         await h.withLock(indexLock(c.customerId), async () => {
-          const reports = await ingestAll(h.db, c.customerId, loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT, { includeEvalCorpus: c.ingestion.includeEvalCorpus }), (m, d) => log.info(d ?? {}, m), process.argv[3]);
+          const reports = await ingestAll(h.db, c.customerId, loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT, { includeEvalCorpus: c.ingestion.includeEvalCorpus, notion: c.ingestion.notion }), (m, d) => log.info(d ?? {}, m), process.argv[3]);
           for (const [id, r] of Object.entries(reports)) log.info({ source: id, ...r }, "ingestion complete");
           if (c.knowledge.provider === "lightrag" && process.argv.includes("--sync")) {
             const k = c.knowledge;
@@ -165,7 +165,7 @@ async function main() {
       const h = connectDatabase(c.databaseUrl!, { max: 3 });
       await waitFor("postgres", h.ping);
       const repos = createRepositories(h.db);
-      const sources = loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT, { includeEvalCorpus: c.ingestion.includeEvalCorpus });
+      const sources = loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT, { includeEvalCorpus: c.ingestion.includeEvalCorpus, notion: c.ingestion.notion });
       const { actions, capabilities } = buildIntegrations({
         db: h.db,
         mcpServersJson: c.integrations.mcpServersJson,
@@ -176,6 +176,10 @@ async function main() {
         proposalTtlMinutes: c.integrations.proposalTtlMinutes,
         onSecurityEvent: (type, detail) => log.warn({ securityEvent: type, ...detail }, "security event"),
         log: (msg, detail) => log.info(detail ?? {}, msg),
+        // Same capability set as the API (ADR 0015), so a workflow sees the same calendar.
+        google: c.integrations.google
+          ? { customerId: c.customerId, ...c.integrations.google, encryptionKey: c.integrations.connectionEncryptionKey!, rows: repos.connections }
+          : undefined,
       });
       const workflows = new WorkflowService({
         db: h.db,

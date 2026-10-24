@@ -36,8 +36,8 @@ export interface SourceAdapter {
 export const SourceConfigSchema = z.strictObject({
   id: z.string().regex(/^[a-z0-9][a-z0-9-]{1,40}$/),
   title: z.string().min(1).max(100),
-  kind: z.enum(["fixture", "folder"]),
-  /** Adapter-specific settings, e.g. { path } for a folder. */
+  kind: z.enum(["fixture", "folder", "notion"]),
+  /** Adapter-specific settings: { path } for a folder; { tokenVar } (env var name, default NOTION_TOKEN) for Notion. */
   settings: z.record(z.string(), z.string()).default({}),
   /** Native group -> platform group. Unmapped native groups are dropped. */
   aclMap: z.record(z.string(), z.string()).default({}),

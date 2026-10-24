@@ -1,0 +1,61 @@
+# SaaS integrations overlay (ADR 0015): personal Google Calendar and a Notion
+# source. Add it after the other overlays:
+#
+#   ... -f infra/compose/integrations/compose.saas.yaml up -d
+#
+# The API and worker still have no route to the internet. Only `egress-proxy`
+# does, and it tunnels HTTPS to the hosts listed below and nothing else (TLS
+# stays end to end; the proxy sees host names, never tokens or content).
+#
+# Secrets come from your shell or .env, never from this file:
+#   GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, CONNECTION_ENCRYPTION_KEY
+#   NOTION_TOKEN, NOTION_ACL_GROUPS (default all-staff)
+
+x-saas-env: &saas-env
+  # Node's fetch honours HTTPS_PROXY with NODE_USE_ENV_PROXY. Internal services
+  # are plain http:// on private networks, so they never go through the proxy.
+  HTTPS_PROXY: http://egress-proxy:3128
+  NODE_USE_ENV_PROXY: "1"
+  NO_PROXY: localhost,127.0.0.1
+  GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+  GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+  CONNECTION_ENCRYPTION_KEY: ${CONNECTION_ENCRYPTION_KEY:-}
+  NOTION_TOKEN: ${NOTION_TOKEN:-}
+  NOTION_ACL_GROUPS: ${NOTION_ACL_GROUPS:-all-staff}
+
+services:
+  egress-proxy:
+    image: node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5
+    command: ["node", "/app/proxy.mjs"]
+    user: node
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    environment:
+      EGRESS_ALLOWED_HOSTS: oauth2.googleapis.com,www.googleapis.com,api.notion.com
+      EGRESS_PORT: "3128"
+    volumes:
+      - ../../services/egress-proxy/proxy.mjs:/app/proxy.mjs:ro
+    networks: [backend, egress]
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(3128,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    deploy: { resources: { limits: { cpus: "0.25", memory: 96M } } }
+
+  api:
+    environment: *saas-env
+    depends_on:
+      egress-proxy: { condition: service_healthy }
+  worker:
+    environment: *saas-env
+    depends_on:
+      egress-proxy: { condition: service_healthy }
+  seed:
+    environment: *saas-env
+
+networks:
+  # The only routable network besides the proxy's ingress: egress-proxy alone is attached.
+  egress: {}

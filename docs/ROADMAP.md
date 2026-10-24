@@ -16,6 +16,7 @@ Last updated: 2026-10-23
 | UI · Forest design | Workspace with context panel, Inbox, account menu, Your connections | commit 51c3d73 · design canvas |
 | 3a · Source ingestion | `SourceAdapter` contract, generic pipeline, folder adapter with inherited ACLs, quarantine, content store, partitions per access set, scheduled ingest → sync | ADR 0009 · 98 tests · `scripts/lightrag-live-check.mjs` (23/23, 2026-10-22) |
 | 3b · Knowledge selection gate *(retrieval part)* | PDF/DOCX parsing in an isolated worker thread, 110-file synthetic corpus, 34 labeled questions, HTTP eval harness (base + hard sets), platform-side version handling, optional semantic evidence score | ADR 0010 · `docs/eval/` (lexical + LightRAG) · 113 tests |
+| Google Calendar and Notion | Personal Google Calendar connection (OAuth + PKCE, read-only, tokens sealed, revocable) backing the meeting assistant; Notion source on the ingestion pipeline; allowlisting egress proxy for SaaS APIs | ADR 0015 · 205 tests · [setup guide](INTEGRATIONS-SETUP.md) |
 | Licence and core assistant | Signed licence file (Ed25519, verified offline), core Knowledge Assistant always available, add-on agents and workflow kinds enforced on every request and run, 14-day grace, admin licence panel and expiry warnings | ADR 0014 · 176 tests |
 | Bulgarian language | Cyrillic-aware search (tokenizer, light Bulgarian stemmer, stopwords), collision-free IDs for Cyrillic file names, answers and platform messages in the question's language, EN/БГ UI switch across all pages, localized agent names | ADR 0013 · 154 tests |
 | Admin console | Operator console (Overview, Sources with Sync now and quarantine, Integrations and pins, Agents, Actions with reconcile, Workflows, Audit); `admin` role with no document access; metadata only, never content | ADR 0012 · 144 tests |
@@ -47,6 +48,27 @@ Last updated: 2026-10-23
    configuration, supervised pilot.
 
 ## Notes from the last stage (to check)
+
+**Google Calendar and Notion**
+- **Not yet tried against the real services.** Everything is tested against
+  local fakes of the Google and Notion APIs. To try it with your accounts,
+  follow [INTEGRATIONS-SETUP.md](INTEGRATIONS-SETUP.md), then
+  [MANUAL-TESTING.md](MANUAL-TESTING.md) §13.
+- **Security choices:**
+  - read-only scopes only
+  - PKCE
+  - single-use state bound to the browser (the session cookie is Strict, so
+    it can't be used on Google's redirect back)
+  - tokens sealed and bound to their owner
+  - a revoked grant is forgotten
+  - the API and worker still have no internet route; only the egress proxy
+    reaches the three API hosts
+- **Notion permissions are coarse:** every shared page is readable by
+  `NOTION_ACL_GROUPS`, because internal integrations don't expose page
+  permissions.
+- **Bug found while checking in the browser:** Turbo's strict environment
+  mode dropped the new variables for `pnpm dev`. They are now in
+  `passThroughEnv`.
 
 **Licence and core assistant**
 - **What a customer always has:** the Knowledge Assistant (documents only,

@@ -437,3 +437,42 @@ export const workflowRuns = pgTable(
   },
   (t) => [uniqueIndex("workflow_runs_slot_uq").on(t.workflowId, t.scheduledFor), index("workflow_runs_status_idx").on(t.status, t.createdAt)],
 );
+
+/**
+ * A user's own account at an external provider (ADR 0015), e.g. Google
+ * Calendar. Tokens are sealed with AES-256-GCM (CONNECTION_ENCRYPTION_KEY);
+ * the database never holds them in clear text. One per user and provider.
+ */
+export const personalConnections = pgTable(
+  "personal_connections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    customerId: text("customer_id").notNull(),
+    principalId: text("principal_id").notNull(),
+    provider: text("provider").notNull(),
+    accountEmail: text("account_email"),
+    scopes: jsonb("scopes").$type<string[]>().notNull().default([]),
+    accessTokenSealed: text("access_token_sealed").notNull(),
+    refreshTokenSealed: text("refresh_token_sealed"),
+    accessTokenExpiresAt: ts("access_token_expires_at").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("personal_connections_owner_uq").on(t.customerId, t.principalId, t.provider)],
+);
+
+/**
+ * A pending OAuth authorization: single use, short-lived, bound to the user
+ * who started it AND to their browser (hash of a nonce cookie), so a link
+ * started by someone else can't attach the victim's account to the attacker.
+ */
+export const oauthStates = pgTable("oauth_states", {
+  state: text("state").primaryKey(),
+  customerId: text("customer_id").notNull(),
+  principalId: text("principal_id").notNull(),
+  provider: text("provider").notNull(),
+  browserNonceHash: text("browser_nonce_hash").notNull(),
+  codeVerifier: text("code_verifier").notNull(),
+  expiresAt: ts("expires_at").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});

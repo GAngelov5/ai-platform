@@ -1,6 +1,6 @@
 import { buildIntegrations, type ActionService } from "@platform/actions";
 import { AgentRegistry, type CapabilityRegistry } from "@platform/agents";
-import type { ConnectorRegistry } from "@platform/connectors";
+import type { ConnectorRegistry, GoogleEndpoints, GoogleOAuthClient, PersonalConnectionStore } from "@platform/connectors";
 import { AgentRuntime, FakeModelGateway, OpenAICompatibleGateway, type ModelGateway } from "@platform/ai";
 import { knowledgeAssistant } from "@platform/agent-knowledge-assistant";
 import { meetingPrep } from "@platform/agent-meeting-prep";
@@ -30,7 +30,7 @@ export const DEFAULT_FIXTURES_DIR = fileURLToPath(new URL("../../../fixtures/doc
 
 /** The configured knowledge sources (the same list the worker ingests). */
 export const configuredSources = (config: PlatformConfig) =>
-  loadSources(config.ingestion.sourcesJson, process.env.FIXTURES_ROOT ?? DEFAULT_FIXTURES_ROOT, { includeEvalCorpus: config.ingestion.includeEvalCorpus });
+  loadSources(config.ingestion.sourcesJson, process.env.FIXTURES_ROOT ?? DEFAULT_FIXTURES_ROOT, { includeEvalCorpus: config.ingestion.includeEvalCorpus, notion: config.ingestion.notion });
 
 /** Sources this deployment's application policy allows to be searched: every configured source. */
 export const policySourceIds = (config: PlatformConfig) => configuredSources(config).map((s) => s.id);
@@ -51,6 +51,8 @@ export interface PlatformDeps {
   connectors: ConnectorRegistry;
   workflows: WorkflowService;
   admin: AdminQueries;
+  /** Personal Google connections; undefined when not configured (ADR 0015). */
+  google?: { oauth: GoogleOAuthClient; store: PersonalConnectionStore };
 }
 
 /** Chunks of exactly the catalogued version, from the platform content store (ADR 0009). */
@@ -116,6 +118,8 @@ export async function buildDeps(input: {
   /** Secret resolver; defaults to process.env. */
   secret?: (name: string) => string | undefined;
   entitlements?: Entitlements;
+  /** Tests only: a local fake of Google's endpoints. */
+  googleEndpoints?: GoogleEndpoints;
 }): Promise<PlatformDeps> {
   const { config, db, logger } = input;
   const repos = createRepositories(db);
@@ -140,7 +144,8 @@ export async function buildDeps(input: {
     logger.warn({ securityEvent: type, ...detail }, "security event");
     void repos.audit.write({ customerId: config.customerId, action: type, outcome: "denied", detail }).catch(() => {});
   };
-  const { actions, capabilities, connectors } = buildIntegrations({
+  const g = config.integrations.google;
+  const { actions, capabilities, connectors, google } = buildIntegrations({
     db,
     mcpServersJson: config.integrations.mcpServersJson,
     secret: input.secret ?? ((n) => process.env[n]),
@@ -150,6 +155,9 @@ export async function buildDeps(input: {
     proposalTtlMinutes: config.integrations.proposalTtlMinutes,
     onSecurityEvent: securityEvent,
     log: (msg, detail) => logger.info(detail ?? {}, msg),
+    google: g
+      ? { customerId: config.customerId, ...g, encryptionKey: config.integrations.connectionEncryptionKey!, rows: repos.connections, endpoints: input.googleEndpoints }
+      : undefined,
   });
   const runtime = new AgentRuntime({
     knowledge,
@@ -162,5 +170,5 @@ export async function buildDeps(input: {
   });
   // The API creates and lists workflows; the worker dispatches and executes them.
   const workflows = new WorkflowService({ db, capabilities, actions, principals: repos.principals, audit: repos.audit, policyVersion: config.policyVersion, entitlements });
-  return { config, repos, knowledge, agents, entitlements, runtime, model, logger, pingDatabase: input.pingDatabase, actions, capabilities, connectors, workflows, admin: createAdminQueries(db) };
+  return { config, repos, knowledge, agents, entitlements, runtime, model, logger, pingDatabase: input.pingDatabase, actions, capabilities, connectors, workflows, admin: createAdminQueries(db), google };
 }

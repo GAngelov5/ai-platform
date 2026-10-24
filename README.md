@@ -59,6 +59,7 @@ services/mcp-atlas-tracker  Synthetic MCP server (live task state, idempotent co
 agents/knowledge-assistant Core agent (documents only, always licensed) + evals
 agents/project-assistant Add-on agent definition + labeled eval questions
 agents/meeting-prep      Add-on agent: meeting briefings (definition + evals)
+services/egress-proxy    Allowlisting HTTPS egress proxy for SaaS APIs
 infra/compose            Compose base, dev overlay, Caddy, LightRAG + Ollama overlay, RAGFlow overlay
 infra/docker/Dockerfile  Multi-target image build (api, worker, web)
 fixtures/                Synthetic identities and Project Atlas documents
@@ -197,6 +198,17 @@ GPU host, or Ollama natively on the Mac (Metal) as an approved local endpoint
 - The UI has an **EN | БГ** switch in the header.
 - For production Bulgarian content, use a multilingual embedding model
   (e.g. `bge-m3`) and evaluate the chat model in Bulgarian first.
+
+## Google Calendar and Notion (ADR 0015)
+
+- **Google Calendar:** each user connects their own account under Your
+  connections (read-only). The Meeting Preparation Assistant then reads the
+  real calendar.
+- **Notion:** pages shared with a Notion integration are indexed as a source,
+  with citations.
+- Setup (Google Cloud OAuth client, Notion integration, `.env`):
+  [docs/INTEGRATIONS-SETUP.md](docs/INTEGRATIONS-SETUP.md). On Docker, add the
+  `compose.saas.yaml` overlay. Only its egress proxy reaches the internet.
 
 ## Licence and the core assistant (ADR 0014)
 

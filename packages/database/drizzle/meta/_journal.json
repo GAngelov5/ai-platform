@@ -36,6 +36,13 @@
       "when": 1792691684899,
       "tag": "0004_admin_sync_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792785444593,
+      "tag": "0005_personal_connections",
+      "breakpoints": true
     }
   ]
 }

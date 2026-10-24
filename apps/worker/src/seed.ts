@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { seedIdentities, type Database, type FixtureIdentity } from "@platform/database";
-import { loadSources } from "@platform/knowledge";
+import { loadSources, type SourceOptions } from "@platform/knowledge";
 import { ingestAll } from "./ingest.js";
 
 export interface IdentityFixtureFile {
@@ -18,7 +18,7 @@ export async function seedFixtures(
   fixturesRoot: string,
   customerId: string,
   sourcesJson?: string,
-  opts: { includeEvalCorpus?: boolean } = {},
+  opts: SourceOptions = {},
 ): Promise<{ principals: number; documents: number; tombstoned: number; quarantined: number }> {
   const identities = JSON.parse(await readFile(join(fixturesRoot, "identities.json"), "utf8")) as IdentityFixtureFile;
   if (identities.customer.id !== customerId) {

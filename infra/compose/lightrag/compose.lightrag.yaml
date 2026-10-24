@@ -117,9 +117,9 @@ services:
       LIGHTRAG_API_KEY: ${LIGHTRAG_API_KEY:?set LIGHTRAG_API_KEY}
       # One partition per access set (ADR 0009); each may serve several sources.
       LIGHTRAG_PARTITIONS: &partitions >-
-        [{"id":"p_handbook_all_staff","url":"http://lightrag-handbook:9621","sourceIds":["company-handbook","team-share"],"aclGroups":["all-staff"]},
-         {"id":"p_atlas_team","url":"http://lightrag-atlas-team:9621","sourceIds":["atlas-project-docs","team-share"],"aclGroups":["atlas-team"]},
-         {"id":"p_atlas_finance_legal","url":"http://lightrag-atlas-finlegal:9621","sourceIds":["atlas-project-docs","team-share"],"aclGroups":["finance-legal"]}]
+        [{"id":"p_handbook_all_staff","url":"http://lightrag-handbook:9621","sourceIds":["company-handbook","team-share","notion"],"aclGroups":["all-staff"]},
+         {"id":"p_atlas_team","url":"http://lightrag-atlas-team:9621","sourceIds":["atlas-project-docs","team-share","notion"],"aclGroups":["atlas-team"]},
+         {"id":"p_atlas_finance_legal","url":"http://lightrag-atlas-finlegal:9621","sourceIds":["atlas-project-docs","team-share","notion"],"aclGroups":["finance-legal"]}]
     depends_on:
       lightrag-handbook: { condition: service_healthy }
       lightrag-atlas-team: { condition: service_healthy }
