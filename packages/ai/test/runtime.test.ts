@@ -257,3 +257,18 @@ describe("OpenAICompatibleGateway endpoint policy", () => {
     expect(await gw(() => Promise.reject(new TypeError("fetch failed"))).health()).toMatchObject({ ok: false, detail: expect.stringMatching(/unreachable/) });
   });
 });
+
+describe("fake model answer text", () => {
+  it("quotes source lines as plain sentences: no Markdown markers, no headings or labels", async () => {
+    const { readableSentence } = await import("../src/fake.js");
+    expect(readableSentence("# Project Orion – Field Pilot Brief")).toBeUndefined();
+    expect(readableSentence("## Key dates")).toBeUndefined();
+    expect(readableSentence("- The Orion field pilot starts on 9 March 2027.")).toBe("The Orion field pilot starts on 9 March 2027.");
+    expect(readableSentence("- [ ] Scan accuracy of at least 99.2%")).toBe("Scan accuracy of at least 99.2%");
+    expect(readableSentence("1. Hire two engineers now")).toBe("Hire two engineers now");
+    expect(readableSentence("> Decided to move the launch")).toBe("Decided to move the launch");
+    expect(readableSentence("| Region | Budget | Owner |")).toBe("Region · Budget · Owner");
+    expect(readableSentence("|---|---|")).toBeUndefined();
+    expect(readableSentence("Budget:")).toBeUndefined();
+  });
+});

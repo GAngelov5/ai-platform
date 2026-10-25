@@ -86,17 +86,35 @@ export class FakeModelGateway implements ModelGateway {
     const q = [...new Set(terms(meeting ? topic : question))];
     // A meeting's evidence was already retrieved per agenda item: one shared topic term makes a sentence relevant.
     const needed = meeting ? 1 : Math.max(2, Math.ceil(q.length * 0.6));
+    // Candidate sentences: those sharing enough question words (after a light English stem).
+    const qs = [...new Set(q.map(stem))];
     const seen = new Set<string>();
+    const picked: { s: string; id: string; words: Set<string>; order: number }[] = [];
     for (const e of docs.evidence ?? []) {
-      for (const s of splitSentences(e.text)) {
-        const st = new Set(terms(s));
-        const hits = q.filter((t) => st.has(t)).length;
-        if (hits >= Math.min(needed, q.length) && !seen.has(s) && lines.length < 6) {
+      // A sentence also "says" its page title and section heading ("Risk 1: weak Wi-Fi" under "Risks" of "Project Orion").
+      const titleTerms = terms(e.title);
+      let headingTerms: string[] = [];
+      for (const raw of splitSentences(e.text)) {
+        if (/^#{1,6}\s/.test(raw.trim())) headingTerms = terms(raw);
+        const s = readableSentence(raw);
+        if (!s || seen.has(s)) continue;
+        const words = new Set([...terms(s), ...headingTerms, ...titleTerms].map(stem));
+        if (qs.filter((t) => words.has(t)).length >= Math.min(needed, qs.length)) {
           seen.add(s);
-          lines.push(`- ${s} [[${e.id}]]`);
+          picked.push({ s, id: e.id, words, order: picked.length });
         }
       }
     }
+    // Rank by the rarer question words a sentence contains (a word in every candidate, like the project
+    // name, says little); keep those close to the best, best first, at most six bullets in total.
+    const df = (t: string) => picked.filter((p) => p.words.has(t)).length;
+    const weight = new Map(qs.map((t) => [t, Math.log(1 + picked.length / Math.max(1, df(t)))]));
+    const score = (p: (typeof picked)[number]) => qs.reduce((n, t) => n + (p.words.has(t) ? weight.get(t)! : 0), 0);
+    const ranked = picked.map((p) => ({ ...p, score: score(p) })).sort((a, b) => b.score - a.score || a.order - b.order);
+    const best = ranked[0]?.score ?? 0;
+    // A meeting briefing keeps every agenda match.
+    const strong = meeting ? ranked : ranked.filter((p) => p.score >= best * 0.6);
+    for (const p of strong.slice(0, 6 - lines.length)) lines.push(`- ${p.s} [[${p.id}]]`);
     const liveItem = live?.results?.[0];
     if (liveItem) {
       const d = liveItem.data as { status?: string; updatedAt?: string };
@@ -116,6 +134,28 @@ export class FakeModelGateway implements ModelGateway {
       steps: this.toolLog.length + 1,
     };
   }
+}
+
+/** Light English stem for matching only: "delayed", "delays" and "delay" compare equal. */
+const stem = (w: string) => (/^[a-z]+$/.test(w) && w.length > 4 ? w.replace(/(?:ing|ed|es|s)$/, "") : w);
+
+/**
+ * A source line as a reader-facing sentence: Markdown list, checkbox, quote and
+ * table markers removed. Headings, table rules and bare labels carry no facts
+ * on their own, so they are skipped (undefined).
+ */
+export function readableSentence(line: string): string | undefined {
+  const t = line.trim();
+  if (!t || /^#{1,6}\s/.test(t) || /^\|?[\s:|-]+\|?$/.test(t) || /^```/.test(t)) return undefined;
+  const s = t
+    .replace(/^>\s*/, "")
+    .replace(/^(?:[-*+]|\d+[.)])\s+/, "")
+    .replace(/^\[[ xX]\]\s+/, "")
+    .replace(/^\|\s*|\s*\|$/g, "")
+    .replace(/\s*\|\s*/g, " · ")
+    .trim();
+  // A short label ("Budget", "Risks:") is a heading in disguise.
+  return s.split(/\s+/).length < 3 ? undefined : s;
 }
 
 function overlap(q: Set<string>, title: string): number {

@@ -8,6 +8,7 @@ import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import {
   adapterFor,
+  blockToMarkdown,
   defaultSources,
   ingestSource,
   NOTION_SHARED_GROUP,
@@ -121,8 +122,8 @@ describe("Notion source adapter", () => {
     const r = await a.listChanges(null);
     expect(r.full).toBe(true);
     expect(r.changes.map((c) => (c.kind === "upsert" ? [c.item.externalId, c.item.title, c.item.version] : []))).toEqual([
-      ["p-roadmap", "Product roadmap 2027", "2026-10-20T10:00:00.000Z"],
-      ["p-notes", "Meeting notes", "2026-10-21T10:00:00.000Z"],
+      ["p-roadmap", "Product roadmap 2027", "2026-10-20T10:00:00.000Z|md3"],
+      ["p-notes", "Meeting notes", "2026-10-21T10:00:00.000Z|md3"],
     ]);
     expect(requests.filter((x) => x.startsWith("POST /v1/search"))).toHaveLength(2);
   });
@@ -133,11 +134,21 @@ describe("Notion source adapter", () => {
     if (first?.kind !== "upsert") throw new Error("expected an upsert");
     const md = await a.fetchContent(first.item);
     expect(md).toContain("# Product roadmap 2027");
-    expect(md).toContain("## Q1 goals");
+    expect(md).toContain("\n## Q1 goals");
     expect(md).toContain("- Launch the customer portal in February");
     expect(md).toContain("- [x] Hire two engineers");
     expect(md).toContain("  Nested detail: the vendor is Northwind Logistics.");
     expect(md).toContain("```sql\nSELECT 1\n```");
+  });
+
+  it("starts a section (a search passage) at Notion's first two heading levels", () => {
+    expect(blockToMarkdown({ id: "h1", type: "heading_1", heading_1: rt("Budget") }, 0)).toBe("\n## Budget\n");
+    expect(blockToMarkdown({ id: "h2", type: "heading_2", heading_2: rt("Risks") }, 0)).toBe("\n## Risks\n");
+    expect(blockToMarkdown({ id: "h3", type: "heading_3", heading_3: rt("Detail") }, 0)).toBe("\n### Detail\n");
+  });
+
+  it("doesn't turn links to subpages into text (each subpage is its own document)", () => {
+    expect(blockToMarkdown({ id: "c", type: "child_page", child_page: { title: "Project Orion" } }, 0)).toBeUndefined();
   });
 
   it("refuses a wrong token with a clear message", async () => {

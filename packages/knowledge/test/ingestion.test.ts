@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  MAX_CHUNK_CHARS,
   chunkText,
   defaultSources,
   documentIdFor,
@@ -155,5 +156,15 @@ describe("pipeline building blocks", () => {
     expect(parseContent("a\r\nb", "text/plain")).toBe("a\nb");
     expect(() => parseContent(new Uint8Array([37, 80, 68, 70]), "application/pdf")).toThrow(UnsupportedTypeError);
     expect(chunkText("d", "intro\n## A\none\n## B\ntwo").map((c) => c.location)).toEqual([undefined, "A", "B"]);
+  });
+});
+
+describe("chunking", () => {
+  it("splits a long section at line breaks, so search never cuts off its end", () => {
+    const lines = Array.from({ length: 60 }, (_, i) => `Line ${i}: the Orion pilot fact number ${i} is written here.`);
+    const chunks = chunkText("doc", `## Facts\n${lines.join("\n")}`);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((c) => c.text.length <= MAX_CHUNK_CHARS && c.location === "Facts")).toBe(true);
+    expect(chunks.map((c) => c.text).join("\n")).toBe(lines.join("\n"));
   });
 });

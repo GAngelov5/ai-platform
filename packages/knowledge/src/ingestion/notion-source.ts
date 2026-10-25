@@ -3,6 +3,11 @@ import type { SourceAdapter, SourceChangeSet, SourceItem } from "./types.js";
 /** Fixed endpoint (no configurable URL, so no SSRF); tests inject a local fake. */
 export const NOTION_API = "https://api.notion.com";
 const NOTION_VERSION = "2022-06-28";
+/**
+ * Bump when blockToMarkdown changes: it is part of every page's version, so a
+ * new conversion re-fetches each page once instead of keeping old text.
+ */
+const CONVERTER = "md3";
 
 /** The native "group" for every page the integration can read; mapped with the source's aclMap (ADR 0015). */
 export const NOTION_SHARED_GROUP = "notion:shared-with-integration";
@@ -119,7 +124,7 @@ export class NotionSourceAdapter implements SourceAdapter {
         if (p.object !== "page" || p.archived || p.in_trash) continue;
         items.push({
           externalId: p.id,
-          version: p.last_edited_time,
+          version: `${p.last_edited_time}|${CONVERTER}`,
           title: pageTitle(p),
           url: p.url,
           modifiedAt: new Date(p.last_edited_time),
@@ -184,12 +189,13 @@ export function blockToMarkdown(b: NotionBlock, depth: number): string | undefin
   switch (b.type) {
     case "paragraph":
       return t ? `${indent}${t}\n` : undefined;
+    // The page title is the "#" line; Notion's first two heading levels both start a section ("##"),
+    // which is where the platform cuts a page into passages.
     case "heading_1":
-      return `\n## ${t}\n`;
     case "heading_2":
-      return `\n### ${t}\n`;
+      return `\n## ${t}\n`;
     case "heading_3":
-      return `\n#### ${t}\n`;
+      return `\n### ${t}\n`;
     case "bulleted_list_item":
     case "toggle":
       return `${indent}- ${t}`;
@@ -205,7 +211,8 @@ export function blockToMarkdown(b: NotionBlock, depth: number): string | undefin
     case "table_row":
       return `${indent}| ${(body.cells ?? []).map((c) => text(c).replace(/\|/g, "\\|")).join(" | ")} |`;
     case "child_page":
-      return body.title ? `${indent}(Subpage: ${body.title})` : undefined;
+      // A link to another page, not content: the subpage is indexed as its own document.
+      return undefined;
     case "divider":
       return "\n---\n";
     default:
