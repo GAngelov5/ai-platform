@@ -36,8 +36,9 @@ answers.
 4. **Clients → Create client** (APIs & Services → Credentials → Create
    credentials → OAuth client ID):
    - Application type: **Web application**.
-   - **Authorized redirect URIs**, add both:
-     - `http://localhost:3000/api/connections/google/callback` (local `pnpm dev`)
+   - **Authorized redirect URIs**, add the ones you'll use:
+     - `https://localhost:3000/api/connections/google/callback` (local, `pnpm dev:https`)
+     - `http://localhost:3000/api/connections/google/callback` (local, `pnpm dev:full`)
      - `https://localhost:8443/api/connections/google/callback` (Docker stack)
 5. Copy the **Client ID** and **Client secret**.
 
@@ -51,10 +52,9 @@ exact pages to share. No token is copied by hand.
    - Type: **Public**. Workspace: yours.
    - Notion asks for a company name, website, privacy policy and terms URL.
      For testing, any of your own URLs will do.
-   - **Redirect URIs**, add both:
-     - `http://localhost:3000/api/connections/notion/callback` (local `pnpm dev`)
+   - **Redirect URIs** (use `https://`; Notion may refuse plain `http://`):
+     - `https://localhost:3000/api/connections/notion/callback` (local, `pnpm dev:https`)
      - `https://localhost:8443/api/connections/notion/callback` (Docker stack)
-     If Notion refuses the `http://` one, use the Docker stack (https).
    - **Capabilities**: tick only **Read content**. Leave update and insert
      content **off**, and set user information to **No user information**.
 2. Save, then copy the **OAuth client ID** and **OAuth client secret**.
@@ -84,20 +84,30 @@ NOTION_ACL_GROUPS=all-staff
 Keep the same `CONNECTION_ENCRYPTION_KEY` from then on. With a new key, stored
 Google connections can't be opened, and users have to connect again.
 
-## 4a. Run locally (quickest)
+## 4a. Run locally over HTTPS (quickest)
 
 ```bash
-cd apps/worker && node --env-file=../../.env --conditions=@platform/source --import tsx src/main.ts migrate && cd ../..
-pnpm dev:full
+pnpm db:migrate        # once, and after pulling new migrations
+pnpm dev:https         # web + API + worker + synthetic tracker
 ```
 
-Open http://localhost:3000.
+Open **https://localhost:3000**.
+- The first run creates a self-signed certificate for localhost in
+  `.local/certs/`. It is not added to your system's trust store. The browser
+  warns once ("Your connection is not private"): choose **Advanced →
+  Proceed to localhost**.
+- In this mode the API uses `PUBLIC_ORIGIN=https://localhost:3000` and secure
+  cookies, whatever `.env` says. The redirect URIs are therefore the
+  `https://localhost:3000/...` ones above.
+- `pnpm dev:full` still runs on plain `http://localhost:3000`. Use
+  `dev:https` for Connect Notion, since Notion may refuse an `http://`
+  redirect address.
 
 After **Connect Notion**, the worker indexes the pages within about a minute.
 To index right away:
 
 ```bash
-cd apps/worker && node --env-file=../../.env --conditions=@platform/source --import tsx src/main.ts ingest notion
+pnpm --filter @platform/worker run cli ingest notion
 ```
 
 ## 4b. Run on the Docker stack
@@ -147,7 +157,8 @@ Open https://localhost:8443. With a `.env` that sets `PUBLIC_ORIGIN` to
 
 | You see | Cause |
 |---|---|
-| Google: "Error 400: redirect_uri_mismatch" | The redirect URI isn't registered exactly as in step 1.4 (scheme, port and path must match). |
+| Google: "Error 400: redirect_uri_mismatch" | The redirect URI isn't registered exactly as in step 1.4 (scheme, port and path must match: `https://localhost:3000` for `pnpm dev:https`). |
+| Browser: "Your connection is not private" on localhost | Expected with the self-signed certificate: Advanced → Proceed. Delete `.local/certs` to make a new one. |
 | Google: "Access blocked: app has not completed verification" | Your address isn't a test user (step 1.3). |
 | "Calendar access wasn't granted" | The calendar checkbox was unticked on the consent screen. Connect again and tick it. |
 | "Not set up for this deployment yet" | `GOOGLE_OAUTH_CLIENT_ID`/`SECRET` didn't reach the API: restart it, and for Docker check that the `compose.saas.yaml` overlay is included. |

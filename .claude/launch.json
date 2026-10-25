@@ -4,13 +4,26 @@
     {
       "name": "dev",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev"],
+      "runtimeArgs": [
+        "dev"
+      ],
       "port": 3000
     },
     {
       "name": "dev-full",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev:full"],
+      "runtimeArgs": [
+        "dev:full"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "dev-https",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "dev:https"
+      ],
+      "url": "https://localhost:3000",
       "port": 3000
     }
   ]

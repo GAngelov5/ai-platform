@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev --port 3000",
+    "dev": "next dev --port 3000 ${DEV_HTTPS_CERT:+--experimental-https --experimental-https-key $DEV_HTTPS_KEY --experimental-https-cert $DEV_HTTPS_CERT}",
     "build": "next build",
     "start": "next start --port 3000",
     "typecheck": "tsc -p tsconfig.json --noEmit",

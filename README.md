@@ -206,6 +206,8 @@ GPU host, or Ollama natively on the Mac (Metal) as an approved local endpoint
   real calendar.
 - **Notion:** pages shared with a Notion integration are indexed as a source,
   with citations.
+- Local HTTPS: `pnpm dev:https` serves https://localhost:3000 with a
+  self-signed certificate (accept the browser warning once).
 - Setup (Google Cloud OAuth client, Notion integration, `.env`):
   [docs/INTEGRATIONS-SETUP.md](docs/INTEGRATIONS-SETUP.md). On Docker, add the
   `compose.saas.yaml` overlay. Only its egress proxy reaches the internet.

@@ -16,7 +16,8 @@
     "smoke": "node scripts/smoke.mjs",
     "live:lightrag": "node scripts/lightrag-live-check.mjs",
     "live:integrations": "node scripts/integration-live-check.mjs",
-    "dev:full": "turbo run dev --filter=@platform/api --filter=@platform/web --filter=@platform/worker --filter=@platform/mcp-atlas-tracker"
+    "dev:full": "turbo run dev --filter=@platform/api --filter=@platform/web --filter=@platform/worker --filter=@platform/mcp-atlas-tracker",
+    "dev:https": "node scripts/dev-https.mjs"
   },
   "devDependencies": {
     "docx": "9.9.0",

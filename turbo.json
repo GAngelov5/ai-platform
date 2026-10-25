@@ -25,6 +25,10 @@
       "cache": false,
       "persistent": true,
       "passThroughEnv": [
+        "DEV_HTTPS_CERT",
+        "DEV_HTTPS_KEY",
+        "COOKIE_SECURE",
+        "PUBLIC_ORIGIN",
         "LICENCE_FILE",
         "GOOGLE_OAUTH_CLIENT_ID",
         "GOOGLE_OAUTH_CLIENT_SECRET",
