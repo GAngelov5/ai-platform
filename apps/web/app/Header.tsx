@@ -73,7 +73,7 @@ export function Header({ me, config, onLogout, active = "none" }: { me?: MeRespo
       {config && (
         <span className="text-xs text-chrome-muted">
           {config.environment === "production" ? "" : t("header.synthetic")}
-          {config.modelProvider.startsWith("fake") ? t("header.fakeModel") : t("header.localModel")} · {config.knowledgeProvider}
+          {config.modelProvider.startsWith("fake") ? t("header.fakeModel") : config.modelMode === "hybrid" ? t("header.externalModel") : t("header.localModel")} · {config.knowledgeProvider}
         </span>
       )}
       <div role="group" aria-label={t("lang.label")} className="ml-auto flex gap-0.5 rounded-[10px] bg-chrome-2 p-0.5 text-xs">

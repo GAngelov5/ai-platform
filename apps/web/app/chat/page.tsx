@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ActionProposalView,
   AgentSummary,
@@ -11,7 +11,7 @@ import type {
   RunEvent,
   ToolCallSummary,
 } from "@platform/contracts";
-import { AgentCard, ApprovalCard, ContextPanel, RunStatus, useT, type ConnectionSummary, type MessageKey, type Translate } from "@platform/ui";
+import { AgentCard, AnswerMarkdown, ApprovalCard, ContextPanel, RunStatus, useT, type ConnectionSummary, type MessageKey, type Translate } from "@platform/ui";
 import { api, ApiRequestError, apiStream } from "../../lib/api";
 import { notifyActionsChanged } from "../../lib/usePendingActions";
 import { useSession } from "../../lib/useSession";
@@ -26,6 +26,17 @@ interface Capability {
 const docHref = (c: Citation) => (c.kind === "live" ? undefined : `/documents/${encodeURIComponent(c.documentId)}#${encodeURIComponent(c.chunkId)}`);
 const TERMINAL = new Set(["succeeded", "failed", "unknown", "rejected", "expired", "cancelled"]);
 /** Connectors backed by a personal account, by provider id (Your connections). */
+/**
+ * Whether an answer came from a model service outside this deployment
+ * ("openai-compatible:generativelanguage.googleapis.com"), so the user can see
+ * that their question left it. Local hosts and internal service names
+ * ("ollama:11434", "localhost:11434") count as local.
+ */
+function isExternalModel(provider: string): boolean {
+  const host = provider.split(":")[1] ?? "";
+  return host.includes(".") && !/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) && !/\.(local|internal|lan)$/.test(host);
+}
+
 /** What each assistant is for, in the question box. */
 const PLACEHOLDER: Record<string, MessageKey> = { "knowledge-assistant": "chat.placeholder.docs", "meeting-prep": "chat.placeholder.meeting" };
 
@@ -52,23 +63,17 @@ function summarizeConnections(caps: Capability[], t: Translate, tm: (k: string, 
   return out;
 }
 
-/** Renders [[evidenceId]] markers as numbered links to the context panel. */
+/** The answer as formatted text; [[evidenceId]] markers become the source numbers shown in the context panel. */
 function AnswerText({ message }: { message: Message }) {
   const order = new Map(message.citations.map((c, i) => [c.evidenceId, i + 1]));
-  const parts = message.content.split(/(\[\[(?:ev|lv)_[A-Za-z0-9_-]+\]\])/g);
   return (
-    <div className="whitespace-pre-wrap">
-      {parts.map((p, i) => {
-        const id = /^\[\[((?:ev|lv)_[A-Za-z0-9_-]+)\]\]$/.exec(p)?.[1];
-        if (!id) return <Fragment key={i}>{p}</Fragment>;
+    <AnswerMarkdown
+      text={message.content}
+      cite={(id) => {
         const n = order.get(id);
-        return n ? (
-          <span key={i} className="mx-0.5 text-[13px] font-semibold text-brand">
-            [{n}]
-          </span>
-        ) : null;
-      })}
-    </div>
+        return n ? <span className="mx-0.5 text-[13px] font-semibold text-brand">[{n}]</span> : null;
+      }}
+    />
   );
 }
 
@@ -309,7 +314,7 @@ export default function ChatPage() {
                   <article
                     className={`max-w-[760px] rounded-[16px] border bg-surface px-[22px] py-5 ${focus?.id === m.id ? "border-line-strong" : "border-line"}`}
                   >
-                    <RunStatus calls={m.toolCalls ?? []} model={m.model ? `${m.model.name}${m.model.provider.startsWith("fake") ? t("chat.modelFake") : t("chat.modelLocal")}` : undefined} />
+                    <RunStatus calls={m.toolCalls ?? []} model={m.model ? `${m.model.name}${m.model.provider.startsWith("fake") ? t("chat.modelFake") : isExternalModel(m.model.provider) ? t("chat.modelExternal") : t("chat.modelLocal")}` : undefined} />
                     {m.status && m.status !== "answered" && <p className="mb-2 text-xs font-bold text-warn-ink">{tm(`status.${m.status}`, m.status)}</p>}
                     <AnswerText message={m} />
                     {(m.proposalIds ?? []).map((id) =>

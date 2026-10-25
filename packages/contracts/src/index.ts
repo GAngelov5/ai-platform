@@ -196,6 +196,8 @@ export const PublicConfigSchema = z.strictObject({
   environment: z.string(),
   knowledgeProvider: z.string(),
   modelProvider: z.string(),
+  /** "hybrid": answers come from an approved external model service (questions leave the deployment). */
+  modelMode: z.enum(["local", "hybrid"]).optional(),
 });
 export type PublicConfig = z.infer<typeof PublicConfigSchema>;
 
