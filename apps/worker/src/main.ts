@@ -10,6 +10,7 @@ import { ConfigurationError, LicenceError, loadEntitlements, LOG_REDACT_PATHS, l
 import { WorkflowService } from "@platform/workflows";
 import { seedFixtures } from "./seed.js";
 import { adapterOptions, ingestAll } from "./ingest.js";
+import { partitionSyncRequests } from "./sync-requests.js";
 
 const FIXTURES_ROOT = process.env.FIXTURES_ROOT ?? fileURLToPath(new URL("../../../fixtures", import.meta.url));
 /** Same default as the API: the development licence outside production (ADR 0014). */
@@ -231,8 +232,10 @@ async function main() {
           if (job.name === "sync-requests") {
             // "Sync now" from the admin console: ingest the requested sources, then sync the RAG backend.
             const admin = createAdminQueries(h.db);
-            const requested = await admin.pendingSyncRequests(c.customerId);
-            if (!requested.length) return { requested: 0 };
+            const { known: requested, unknown } = partitionSyncRequests(await admin.pendingSyncRequests(c.customerId), sources);
+            // Not cleared: another worker that has these sources handles them on a later tick.
+            if (unknown.length) log.warn({ sources: unknown }, "sync requested for sources this worker doesn't have; left for another worker");
+            if (!requested.length) return { requested: 0, skipped: unknown };
             const startedAt = new Date();
             const run = await h.withLock(
               indexLock(c.customerId),
@@ -246,7 +249,7 @@ async function main() {
                 }
                 for (const id of requested) await admin.clearSyncRequest(c.customerId, id, startedAt);
                 log.info({ requested, reports, sync }, "requested sync");
-                return { requested: requested.length };
+                return { requested: requested.length, skipped: unknown };
               },
               { wait: false },
             );
