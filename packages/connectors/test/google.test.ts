@@ -76,6 +76,13 @@ describe("Google OAuth", () => {
     await expect(oauth.exchangeCode(code, req.codeVerifier)).rejects.toMatchObject({ kind: "denied" });
   });
 
+  it("a connection sealed with another key reads as not connected (the key was changed)", async () => {
+    const { rows, connect } = world();
+    await connect("alice", "alice@example.test");
+    const otherKey = new PersonalConnectionStore(rows, new SecretSealer(randomBytes(32).toString("base64")));
+    expect(await otherKey.get(C, "alice", "google")).toBeUndefined();
+  });
+
   it("stores tokens sealed and bound to their owner", async () => {
     const { rows, store, connect } = world();
     const c = await connect("alice", "alice@example.test");
@@ -84,7 +91,7 @@ describe("Google OAuth", () => {
     expect(JSON.stringify(row)).not.toContain(c.refreshToken!);
     // A sealed token copied onto another user's row doesn't open.
     await rows.upsert({ ...row, principalId: "mallory" });
-    await expect(store.get(C, "mallory", "google")).rejects.toThrow();
+    expect(await store.get(C, "mallory", "google")).toBeUndefined();
     expect((await store.get(C, "alice", "google"))?.accessToken).toBe(c.accessToken);
   });
 });

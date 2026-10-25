@@ -1,5 +1,7 @@
 # Setting up Google Calendar and Notion
 
+Click-by-click version: [CONNECT-WALKTHROUGH.md](CONNECT-WALKTHROUGH.md).
+
 What you need to do on the Google and Notion side, and how to start the
 platform with it. About 15 minutes. Design and security: ADR 0015.
 

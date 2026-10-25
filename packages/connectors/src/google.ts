@@ -74,12 +74,22 @@ export class PersonalConnectionStore {
     const r = await this.rows.get(customerId, principalId, provider);
     if (!r) return undefined;
     const ctx = (w: string) => PersonalConnectionStore.context(customerId, principalId, provider, w);
+    let accessToken: string;
+    let refreshToken: string | undefined;
+    try {
+      accessToken = this.sealer.open(r.accessTokenSealed, ctx("access"));
+      refreshToken = r.refreshTokenSealed ? this.sealer.open(r.refreshTokenSealed, ctx("refresh")) : undefined;
+    } catch {
+      // Sealed with another key (CONNECTION_ENCRYPTION_KEY changed) or tampered with: unusable,
+      // so it reads as "not connected" and the user connects again; never an error page.
+      return undefined;
+    }
     return {
       accountEmail: r.accountEmail ?? undefined,
       connectedBy: r.connectedBy ?? undefined,
       scopes: r.scopes,
-      accessToken: this.sealer.open(r.accessTokenSealed, ctx("access")),
-      refreshToken: r.refreshTokenSealed ? this.sealer.open(r.refreshTokenSealed, ctx("refresh")) : undefined,
+      accessToken,
+      refreshToken,
       expiresAt: r.accessTokenExpiresAt,
       connectedAt: r.createdAt,
     };
