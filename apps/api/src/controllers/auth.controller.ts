@@ -10,6 +10,13 @@ import type { PlatformDeps } from "../deps.js";
 import { DEPS } from "../tokens.js";
 
 const LOGIN_COOKIE = "platform_login_nonce";
+/**
+ * Set by Sign out: the next company sign-in asks the provider to show its account
+ * picker instead of passing straight through on the provider's own session.
+ * Not a secret; it only changes what the provider shows.
+ */
+const SIGNED_OUT_COOKIE = "platform_signed_out";
+const SIGNED_OUT_PATH = "/api/auth/oidc";
 const LOGIN_TTL_MS = 10 * 60_000;
 
 @Controller("auth")
@@ -77,12 +84,12 @@ export class AuthController {
    */
   @Public()
   @Get("oidc/login")
-  async oidcLogin(@Res() res: Response) {
+  async oidcLogin(@Req() req: PlatformRequest, @Res() res: Response) {
     const oidc = this.deps.oidc;
     if (!oidc) throw new NotFoundException();
     const browserNonce = randomBytes(32).toString("base64url");
     const nonce = hashToken(browserNonce);
-    const { url, state, codeVerifier } = await oidc.start(nonce);
+    const { url, state, codeVerifier } = await oidc.start(nonce, { chooseAccount: req.cookies[SIGNED_OUT_COOKIE] === "1" });
     await this.deps.repos.oauthStates.create({
       state,
       customerId: this.deps.config.customerId,
@@ -142,6 +149,7 @@ export class AuthController {
       detail: { groups: identity.groups, roles: identity.roles, unmappedGroups: identity.directoryGroups.length - identity.groups.length },
     });
     res.clearCookie(LOGIN_COOKIE, { path: "/api/auth/oidc/callback" });
+    res.clearCookie(SIGNED_OUT_COOKIE, { path: SIGNED_OUT_PATH });
     res.cookie(SESSION_COOKIE, token, { ...this.cookieBase(), httpOnly: true, maxAge: ttlMs });
     res.redirect(302, "/chat");
   }
@@ -151,6 +159,7 @@ export class AuthController {
   async logout(@Req() req: PlatformRequest, @Res({ passthrough: true }) res: Response) {
     if (req.sessionTokenHash) await this.deps.repos.sessions.revoke(req.sessionTokenHash);
     res.clearCookie(SESSION_COOKIE, { ...this.cookieBase(), httpOnly: true });
+    if (this.deps.oidc) res.cookie(SIGNED_OUT_COOKIE, "1", { secure: this.deps.config.api.cookieSecure, sameSite: "lax", httpOnly: true, path: SIGNED_OUT_PATH, maxAge: 30 * 24 * 3600_000 });
   }
 
   @Get("me")

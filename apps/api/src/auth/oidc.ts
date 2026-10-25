@@ -54,8 +54,13 @@ export class OidcLogin {
     return this.configuration;
   }
 
-  /** Where to send the browser, plus the secrets to keep until it comes back. */
-  async start(nonce: string) {
+  /**
+   * Where to send the browser, plus the secrets to keep until it comes back.
+   * chooseAccount (after Sign out): the provider shows its account picker rather than
+   * signing straight in on its own session. Google has a picker (select_account);
+   * other providers ask for the sign-in again (login).
+   */
+  async start(nonce: string, o: { chooseAccount?: boolean } = {}) {
     const codeVerifier = client.randomPKCECodeVerifier();
     const state = client.randomState();
     const url = client.buildAuthorizationUrl(await this.config(), {
@@ -65,6 +70,7 @@ export class OidcLogin {
       code_challenge_method: "S256",
       state,
       nonce,
+      ...(o.chooseAccount ? { prompt: this.isGoogle() ? "select_account" : "login" } : {}),
       // Google: with one Workspace domain, the account picker goes straight to it (a hint; enforced on return).
       ...(this.isGoogle() && this.cfg.allowedDomains.length === 1 && !this.cfg.allowedEmails.length ? { hd: this.cfg.allowedDomains[0]! } : {}),
     });

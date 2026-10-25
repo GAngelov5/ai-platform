@@ -113,8 +113,12 @@ To go back to the synthetic user picker: `AUTH_MODE=dev`, `DEV_AUTH_ENABLED=true
 
 ## Signing out
 
-**Sign out** ends the platform session. The provider's own session may stay
-open (single sign-on), so the next **Sign in** can go straight through.
+**Sign out** ends the platform session, not the provider's own session (signing
+out of Google would also sign you out of Gmail). Normal sign-ins go straight
+through on the provider's session (single sign-on). The first sign-in after a
+Sign out instead asks the provider to show the account choice again: Google
+shows its account picker (`prompt=select_account`), other providers ask for
+the sign-in again (`prompt=login`). Signing in clears this.
 Disabling a user in the platform stops their session at once; removing them
 from the directory takes effect at their next sign-in, or when their platform
 session expires (`SESSION_TTL_MINUTES`, default 8 hours).

@@ -219,6 +219,20 @@ describe("company sign-in (OIDC)", () => {
     expect((await new Browser().get("/api/auth/oidc/callback?state=made-up&code=x")).location).toBe("/?login=error");
   });
 
+  it("after Sign out, the next sign-in asks the provider to show the sign-in again; otherwise not", async () => {
+    const b = new Browser();
+    const promptOf = async () => new URL((await b.get("/api/auth/oidc/login")).location!).searchParams.get("prompt");
+    expect(await promptOf()).toBeNull();
+    await b.signIn(alice);
+    const csrf = (await b.get("/api/auth/csrf")).json.token as string;
+    const out = await fetch(base + "/api/auth/logout", { method: "POST", headers: { "x-csrf-token": csrf, cookie: [...b.cookies].map(([k, v]) => `${k}=${v}`).join("; ") } });
+    expect(out.status).toBe(204);
+    for (const c of out.headers.getSetCookie()) { const [kv] = c.split(";"); const i = kv!.indexOf("="); const v = kv!.slice(i + 1); if (v && !/Expires=Thu, 01 Jan 1970/i.test(c)) b.cookies.set(kv!.slice(0, i), v); else b.cookies.delete(kv!.slice(0, i)); }
+    expect(await promptOf()).toBe("login"); // a Keycloak-like provider; Google gets select_account
+    await b.signIn(alice); // signed in again: back to one click
+    expect(await promptOf()).toBeNull();
+  });
+
   it("refuses people outside the allowed domain, with its own message", async () => {
     const idp2 = await new FakeIdp().start();
     const config = loadPlatformConfig({
