@@ -90,7 +90,9 @@ export class AdminController {
         /** Native group → platform group. Platform groups only; no credentials or paths. */
         aclMap: s.aclPassThrough ? "pass-through (synthetic fixtures)" : s.aclMap,
         documents: c?.documents ?? 0,
-        indexed: c?.indexed ?? 0,
+        // "Indexed" = searchable. LightRAG/RAGFlow count documents synced into the backend; the local
+        // search (fixture provider) searches the content store directly, so every readable document counts.
+        indexed: config.knowledge.provider === "fixture" ? (c?.documents ?? 0) - (c?.unsearchable ?? 0) : (c?.indexed ?? 0),
         unsearchable: c?.unsearchable ?? 0,
         tombstoned: c?.tombstoned ?? 0,
         quarantined: quarantine.get(s.id) ?? 0,

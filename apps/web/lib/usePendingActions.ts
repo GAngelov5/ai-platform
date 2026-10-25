@@ -12,11 +12,15 @@ export const notifyActionsChanged = () => window.dispatchEvent(new Event(ACTIONS
 /** The signed-in user's own proposals. Refreshes on ACTIONS_CHANGED and every 30 s. */
 export function useActions(enabled: boolean) {
   const [actions, setActions] = useState<ActionProposalView[]>([]);
+  // False until the first answer, so pages don't show "nothing here" while still loading.
+  const [loaded, setLoaded] = useState(false);
   const load = useCallback(async () => {
     try {
       setActions(await api<ActionProposalView[]>("/api/actions"));
     } catch {
       // header count is best-effort
+    } finally {
+      setLoaded(true);
     }
   }, []);
   useEffect(() => {
@@ -30,5 +34,5 @@ export function useActions(enabled: boolean) {
       clearInterval(t);
     };
   }, [enabled, load]);
-  return { actions, reload: load };
+  return { actions, loaded, reload: load };
 }

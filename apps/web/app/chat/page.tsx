@@ -11,7 +11,7 @@ import type {
   RunEvent,
   ToolCallSummary,
 } from "@platform/contracts";
-import { AgentCard, ApprovalCard, ContextPanel, RunStatus, useT, type ConnectionSummary, type Translate } from "@platform/ui";
+import { AgentCard, ApprovalCard, ContextPanel, RunStatus, useT, type ConnectionSummary, type MessageKey, type Translate } from "@platform/ui";
 import { api, ApiRequestError, apiStream } from "../../lib/api";
 import { notifyActionsChanged } from "../../lib/usePendingActions";
 import { useSession } from "../../lib/useSession";
@@ -25,13 +25,25 @@ interface Capability {
 
 const docHref = (c: Citation) => (c.kind === "live" ? undefined : `/documents/${encodeURIComponent(c.documentId)}#${encodeURIComponent(c.chunkId)}`);
 const TERMINAL = new Set(["succeeded", "failed", "unknown", "rejected", "expired", "cancelled"]);
+/** Connectors backed by a personal account, by provider id (Your connections). */
+/** What each assistant is for, in the question box. */
+const PLACEHOLDER: Record<string, MessageKey> = { "knowledge-assistant": "chat.placeholder.docs", "meeting-prep": "chat.placeholder.meeting" };
+
+const PERSONAL_CONNECTORS: Record<string, string> = { "google-calendar": "google" };
+
 /** Turns the user's allowed capabilities into the "Connections in use" list. */
-function summarizeConnections(caps: Capability[], t: Translate, tm: (k: string, f: string) => string): ConnectionSummary[] {
+function summarizeConnections(caps: Capability[], t: Translate, tm: (k: string, f: string) => string, personal: Record<string, boolean>): ConnectionSummary[] {
   const out: ConnectionSummary[] = [];
   if (caps.some((c) => c.id === "knowledge.search")) out.push({ name: t("chat.companyDocuments"), access: t("chat.access.search") });
   const byConnector = new Map<string, Capability[]>();
   for (const c of caps) if (c.connectorId) byConnector.set(c.connectorId, [...(byConnector.get(c.connectorId) ?? []), c]);
   for (const [id, list] of byConnector) {
+    // A personal connection (connector id → provider) counts only once this user has connected it.
+    const provider = PERSONAL_CONNECTORS[id];
+    if (provider && !personal[provider]) {
+      out.push({ name: tm(`connector.${id}`, id), access: t("chat.notConnected"), href: "/connections", actionLabel: t("chat.connect") });
+      continue;
+    }
     const reads = list.some((c) => c.kind === "read");
     const writes = list.some((c) => c.kind === "write");
     out.push({ name: tm(`connector.${id}`, id), access: [reads && t("chat.access.read"), writes && t("chat.access.writes")].filter(Boolean).join(" · ") });
@@ -66,6 +78,7 @@ export default function ChatPage() {
   const [agentId, setAgentId] = useState("project-assistant");
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [caps, setCaps] = useState<Capability[]>([]);
+  const [personal, setPersonal] = useState<Record<string, boolean>>({});
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [current, setCurrent] = useState<ConversationDetail>();
   const [selected, setSelected] = useState<string>();
@@ -124,13 +137,14 @@ export default function ChatPage() {
     void loadList().catch((e) => setError(e.message));
     void api<AgentSummary[]>("/api/agents").then(setAgents, () => {});
     void api<Capability[]>("/api/capabilities").then(setCaps, () => {});
+    void api<{ provider: string; connected: boolean }[]>("/api/connections").then((l) => setPersonal(Object.fromEntries(l.map((c) => [c.provider, c.connected]))), () => {});
     const c = params.get("c");
     if (c) void open(c).catch(() => setError(t("chat.unavailable")));
   }, [me, loadList, open]);
 
   const assistantMessages = (current?.messages ?? []).filter((m) => m.role === "assistant");
   const focus = assistantMessages.find((m) => m.id === selected) ?? [...assistantMessages].reverse().find((m) => m.citations.length) ?? assistantMessages.at(-1);
-  const connections = useMemo(() => summarizeConnections(caps, t, tm), [caps, t, tm]);
+  const connections = useMemo(() => summarizeConnections(caps, t, tm, personal), [caps, t, tm, personal]);
 
   const poll = async (id: string) => {
     for (let i = 0; i < 60; i++) {
@@ -340,7 +354,7 @@ export default function ChatPage() {
               value={draft}
               maxLength={4000}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder={t("chat.placeholder")}
+              placeholder={t(PLACEHOLDER[current?.agentId ?? agentId] ?? "chat.placeholder")}
               disabled={busy || resuming}
               className="min-h-[46px] flex-1 rounded-xl border border-line-strong bg-surface px-3.5 text-ink placeholder:text-muted"
             />

@@ -548,6 +548,8 @@ describe("admin console (ADR 0012)", () => {
     expect(o.sources.configured).toBeGreaterThanOrEqual(3);
     const sources = (await dana.req("GET", "/api/admin/sources")).json;
     expect(sources.find((s: { id: string }) => s.id === "team-share")).toMatchObject({ quarantined: 1, unsearchable: 1 });
+    // Local search (fixture provider) searches stored documents directly: every readable one counts as indexed.
+    for (const src of sources as { documents: number; indexed: number; unsearchable: number }[]) expect(src.indexed).toBe(src.documents - src.unsearchable);
     const q = (await dana.req("GET", "/api/admin/sources/team-share/quarantine")).json;
     expect(q[0]).toMatchObject({ externalId: "atlas/architecture-diagram.pdf", reason: "needs_ocr" });
     expect((await dana.req("GET", "/api/admin/sources/no-such-source/quarantine")).status).toBe(404);

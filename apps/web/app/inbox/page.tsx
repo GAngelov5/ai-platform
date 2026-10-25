@@ -35,7 +35,7 @@ const TERMINAL = new Set(["succeeded", "failed", "unknown", "rejected", "expired
 export default function InboxPage() {
   const { me, config, refresh } = useSession();
   const { t, when } = useT();
-  const { actions, reload } = useActions(!!me);
+  const { actions, loaded, reload } = useActions(!!me);
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedId, setSelectedId] = useState<string>();
   const [overrides, setOverrides] = useState<Record<string, ActionProposalView>>({});
@@ -109,7 +109,9 @@ export default function InboxPage() {
           </div>
         </div>
 
-        {all.length === 0 ? (
+        {!loaded ? (
+          <p className="text-muted">{t("common.loading")}</p>
+        ) : all.length === 0 ? (
           <div className="rounded-[16px] border border-dashed border-line-strong p-8 text-center text-muted">
             <p className="font-semibold text-ink-2">{t("inbox.emptyTitle")}</p>
             <p className="mt-1 text-[13.5px]">{t("inbox.emptyText")}</p>

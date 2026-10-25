@@ -64,7 +64,7 @@ function Table({ head, rows, empty }: { head: string[]; rows: React.ReactNode[][
 
 function Stat({ label, value, tone }: { label: string; value: React.ReactNode; tone?: "warn" | "alert" }) {
   return (
-    <div className={`min-w-[150px] flex-1 rounded-[14px] border p-4 ${tone === "alert" ? "border-alert-line bg-alert-bg" : tone === "warn" ? "border-warn-line bg-warn-bg" : "border-line bg-surface"}`}>
+    <div className={`rounded-[14px] border p-4 ${tone === "alert" ? "border-alert-line bg-alert-bg" : tone === "warn" ? "border-warn-line bg-warn-bg" : "border-line bg-surface"}`}>
       <p className="text-xs font-semibold text-muted uppercase">{label}</p>
       <p className="mt-1 text-[22px] font-bold">{value}</p>
     </div>
@@ -116,7 +116,7 @@ function Overview() {
         />
         <p className="mt-2 text-[13px] text-muted">{t("admin.envLine", { env: o.environment, mode: o.evidenceScoring })}</p>
       </section>
-      <section className="flex flex-wrap gap-3">
+      <section className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
         <Stat label={t("admin.stat.waiting")} value={o.actions.waiting} />
         <Stat label={t("admin.stat.unknown")} value={o.actions.unknown} tone={o.actions.unknown ? "alert" : undefined} />
         <Stat label={t("admin.stat.failed")} value={o.actions.failed} tone={o.actions.failed ? "warn" : undefined} />
@@ -126,7 +126,7 @@ function Overview() {
         <Stat label={t("admin.stat.stuckRuns")} value={o.workflows.staleRuns} tone={o.workflows.staleRuns ? "alert" : undefined} />
         <Stat label={t("admin.stat.denied")} value={o.deniedEventsLast24h} />
       </section>
-      <section className="flex flex-wrap gap-3">
+      <section className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
         <Stat label={t("admin.stat.documents")} value={t("admin.stat.indexedOf", { a: o.sources.indexed, b: o.sources.documents })} />
         <Stat label={t("admin.stat.sources")} value={o.sources.configured} />
         <Stat label={t("admin.stat.workflows")} value={t("admin.stat.activeOf", { a: o.workflows.enabled, b: o.workflows.total })} />

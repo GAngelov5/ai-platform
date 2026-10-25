@@ -26,7 +26,7 @@ const STATE: Record<string, { card: string; text: string }> = {
  * hash shown here; the server rejects any mismatch.
  */
 export function ApprovalCard({ proposal: p, busy, onApprove, onReject }: ApprovalCardProps) {
-  const { t, tm, lang } = useT();
+  const { t, tm, when } = useT();
   const s = STATE[p.state] ?? STATE.pending_approval!;
   const pending = p.state === "pending_approval";
   const expired = new Date(p.expiresAt).getTime() < Date.now();
@@ -49,7 +49,7 @@ export function ApprovalCard({ proposal: p, busy, onApprove, onReject }: Approva
             </div>
           ))}
         <dt className="text-muted">{t("approval.expires")}</dt>
-        <dd>{new Date(p.expiresAt).toLocaleString(lang === "bg" ? "bg-BG" : undefined)}</dd>
+        <dd>{when(p.expiresAt)}</dd>
         <dt className="text-muted">{t("approval.risk")}</dt>
         <dd>{p.risk}</dd>
         <dt className="text-muted">{t("approval.hash")}</dt>
