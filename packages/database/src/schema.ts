@@ -440,7 +440,8 @@ export const workflowRuns = pgTable(
 
 /**
  * A user's own account at an external provider (ADR 0015), e.g. Google
- * Calendar. Tokens are sealed with AES-256-GCM (CONNECTION_ENCRYPTION_KEY);
+ * Calendar; or the organization's (principal_id "@organization"), e.g. Notion,
+ * connected by an admin. Tokens are sealed with AES-256-GCM (CONNECTION_ENCRYPTION_KEY);
  * the database never holds them in clear text. One per user and provider.
  */
 export const personalConnections = pgTable(
@@ -450,7 +451,9 @@ export const personalConnections = pgTable(
     customerId: text("customer_id").notNull(),
     principalId: text("principal_id").notNull(),
     provider: text("provider").notNull(),
+    /** Account label: the Google address, or the Notion workspace name. */
     accountEmail: text("account_email"),
+    connectedBy: text("connected_by"),
     scopes: jsonb("scopes").$type<string[]>().notNull().default([]),
     accessTokenSealed: text("access_token_sealed").notNull(),
     refreshTokenSealed: text("refresh_token_sealed"),

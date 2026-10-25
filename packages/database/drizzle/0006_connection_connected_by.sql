@@ -1,0 +1,1 @@
+ALTER TABLE "personal_connections" ADD COLUMN "connected_by" text;

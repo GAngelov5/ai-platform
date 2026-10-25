@@ -49,8 +49,14 @@ interface NotionPage {
 export class NotionSourceAdapter implements SourceAdapter {
   readonly kind = "notion";
 
+  /**
+   * `token`: a fixed integration secret (NOTION_TOKEN), or a resolver for the
+   * admin's "Connect Notion" connection. A resolver returning undefined means
+   * "not connected": the listing is then empty and complete, so pages
+   * indexed before a disconnect are removed.
+   */
   constructor(
-    private readonly token: string,
+    private readonly token: string | (() => Promise<string | undefined>),
     private readonly opts: {
       baseUrl?: string;
       fetchImpl?: Fetch;
@@ -65,30 +71,38 @@ export class NotionSourceAdapter implements SourceAdapter {
     if (!token) throw new Error("Notion source needs a token");
   }
 
+  private async currentToken(): Promise<string | undefined> {
+    return typeof this.token === "string" ? this.token : this.token();
+  }
+
   private last = 0;
 
-  private async request<T>(method: "GET" | "POST", path: string, body?: unknown, signal?: AbortSignal, attempt = 0): Promise<T> {
+  private async request<T>(method: "GET" | "POST", path: string, body?: unknown, signal?: AbortSignal, attempt = 0, token?: string): Promise<T> {
+    const bearer = token ?? (await this.currentToken());
+    if (!bearer) throw new Error("Notion is not connected: an admin connects it under Your connections");
     // Notion allows about 3 requests per second per integration.
     const gap = (this.opts.minIntervalMs ?? 340) - (Date.now() - this.last);
     if (gap > 0) await new Promise((r) => setTimeout(r, gap));
     this.last = Date.now();
     const res = await (this.opts.fetchImpl ?? fetch)(new URL(path, this.opts.baseUrl ?? NOTION_API), {
       method,
-      headers: { authorization: `Bearer ${this.token}`, "notion-version": NOTION_VERSION, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${bearer}`, "notion-version": NOTION_VERSION, "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000),
     });
     if (res.status === 429 && attempt < 3) {
       const wait = Math.min(30, Number(res.headers.get("retry-after")) || 2) * 1000;
       await new Promise((r) => setTimeout(r, wait));
-      return this.request(method, path, body, signal, attempt + 1);
+      return this.request(method, path, body, signal, attempt + 1, bearer);
     }
-    if (res.status === 401) throw new Error("Notion rejected the token (401): check NOTION_TOKEN");
+    if (res.status === 401) throw new Error(typeof this.token === "string" ? "Notion rejected the token (401): check NOTION_TOKEN" : "Notion rejected the connection (401): an admin needs to connect Notion again");
     if (!res.ok) throw new Error(`Notion ${method} ${path.split("?")[0]} failed: ${res.status}`);
     return (await res.json()) as T;
   }
 
   async listChanges(_cursor: string | null, signal?: AbortSignal): Promise<SourceChangeSet> {
+    const token = await this.currentToken();
+    if (!token) return { full: true, cursor: new Date().toISOString(), changes: [] };
     const items: SourceItem[] = [];
     const max = this.opts.maxPages ?? 2000;
     let cursor: string | undefined;
@@ -98,6 +112,8 @@ export class NotionSourceAdapter implements SourceAdapter {
         "/v1/search",
         { filter: { property: "object", value: "page" }, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) },
         signal,
+        0,
+        token,
       );
       for (const p of r.results) {
         if (p.object !== "page" || p.archived || p.in_trash) continue;

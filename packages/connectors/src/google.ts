@@ -21,7 +21,10 @@ export const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.e
 export const GOOGLE_SCOPES = ["openid", "email", GOOGLE_CALENDAR_SCOPE] as const;
 
 export interface StoredConnection {
+  /** Account shown to the user: the Google address, or the Notion workspace name. */
   accountEmail?: string;
+  /** Who made the connection (for organization connections, the admin). */
+  connectedBy?: string;
   scopes: string[];
   accessToken: string;
   refreshToken?: string;
@@ -31,13 +34,23 @@ export interface StoredConnection {
 /** Rows as stored: tokens already sealed. Implemented by the database package. */
 export interface SealedConnectionRows {
   get(customerId: string, principalId: string, provider: string): Promise<
-    { accountEmail: string | null; scopes: string[]; accessTokenSealed: string; refreshTokenSealed: string | null; accessTokenExpiresAt: Date; createdAt: Date } | undefined
+    | {
+        accountEmail: string | null;
+        connectedBy: string | null;
+        scopes: string[];
+        accessTokenSealed: string;
+        refreshTokenSealed: string | null;
+        accessTokenExpiresAt: Date;
+        createdAt: Date;
+      }
+    | undefined
   >;
   upsert(row: {
     customerId: string;
     principalId: string;
     provider: string;
     accountEmail: string | null;
+    connectedBy: string | null;
     scopes: string[];
     accessTokenSealed: string;
     refreshTokenSealed: string | null;
@@ -63,6 +76,7 @@ export class PersonalConnectionStore {
     const ctx = (w: string) => PersonalConnectionStore.context(customerId, principalId, provider, w);
     return {
       accountEmail: r.accountEmail ?? undefined,
+      connectedBy: r.connectedBy ?? undefined,
       scopes: r.scopes,
       accessToken: this.sealer.open(r.accessTokenSealed, ctx("access")),
       refreshToken: r.refreshTokenSealed ? this.sealer.open(r.refreshTokenSealed, ctx("refresh")) : undefined,
@@ -78,6 +92,7 @@ export class PersonalConnectionStore {
       principalId,
       provider,
       accountEmail: c.accountEmail ?? null,
+      connectedBy: c.connectedBy ?? null,
       scopes: c.scopes,
       accessTokenSealed: this.sealer.seal(c.accessToken, ctx("access")),
       refreshTokenSealed: c.refreshToken ? this.sealer.seal(c.refreshToken, ctx("refresh")) : null,

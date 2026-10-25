@@ -13,7 +13,7 @@ const notionNative = (i: number) => (i === 0 ? NOTION_SHARED_GROUP : `${NOTION_S
 export interface SourceOptions {
   includeEvalCorpus?: boolean;
   /** Adds the Notion source (ADR 0015): every page shared with the integration is readable by these groups. */
-  notion?: { aclGroups: string[] };
+  notion?: { aclGroups: string[]; viaConnection?: boolean };
 }
 
 export function defaultSources(fixturesRoot: string, opts: SourceOptions = {}): SourceConfig[] {
@@ -46,7 +46,11 @@ export function defaultSources(fixturesRoot: string, opts: SourceOptions = {}): 
             title: "Notion",
             kind: "notion",
             // Every shared page carries one native group per configured platform group.
-            settings: { tokenVar: "NOTION_TOKEN", nativeGroups: opts.notion.aclGroups.map((_, i) => notionNative(i)).join(",") },
+            settings: {
+              // "connection": the admin's "Connect Notion"; otherwise the NOTION_TOKEN integration secret.
+              ...(opts.notion.viaConnection ? { tokenFrom: "connection" } : { tokenVar: "NOTION_TOKEN" }),
+              nativeGroups: opts.notion.aclGroups.map((_, i) => notionNative(i)).join(","),
+            },
             aclMap: Object.fromEntries(opts.notion.aclGroups.map((g, i) => [notionNative(i), g])),
           },
         ]
@@ -58,12 +62,21 @@ export function loadSources(json: string | undefined, fixturesRoot: string, opts
   return json ? SourcesConfigSchema.parse(JSON.parse(json)) : defaultSources(fixturesRoot, opts);
 }
 
-export function adapterFor(source: SourceConfig, opts: { secret?: (name: string) => string | undefined } = {}): SourceAdapter {
+export function adapterFor(
+  source: SourceConfig,
+  opts: { secret?: (name: string) => string | undefined; notionConnection?: () => Promise<string | undefined> } = {},
+): SourceAdapter {
   if (source.kind === "notion") {
     // The token is resolved by reference, never stored in source configuration.
-    const tokenVar = source.settings.tokenVar ?? "NOTION_TOKEN";
-    const token = (opts.secret ?? ((n) => process.env[n]))(tokenVar);
-    if (!token) throw new Error(`source ${source.id} needs ${tokenVar}`);
+    let token: string | (() => Promise<string | undefined>) | undefined;
+    if (source.settings.tokenFrom === "connection") {
+      token = opts.notionConnection;
+      if (!token) throw new Error(`source ${source.id} needs the Notion connection store`);
+    } else {
+      const tokenVar = source.settings.tokenVar ?? "NOTION_TOKEN";
+      token = (opts.secret ?? ((n) => process.env[n]))(tokenVar);
+      if (!token) throw new Error(`source ${source.id} needs ${tokenVar}`);
+    }
     return new NotionSourceAdapter(token, {
       nativeGroups: source.settings.nativeGroups ? source.settings.nativeGroups.split(",") : undefined,
       // Tests only: a local fake of the Notion API.

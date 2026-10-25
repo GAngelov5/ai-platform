@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useT } from "@platform/ui";
+import { useT, type MessageKey } from "@platform/ui";
 import { api } from "../../lib/api";
 import { useSession } from "../../lib/useSession";
 import { Header } from "../Header";
@@ -16,93 +16,129 @@ interface Capability {
 
 const INITIALS: Record<string, string> = { "atlas-tracker": "AT", calendar: "CA", "google-calendar": "G" };
 
-interface PersonalConnection {
-  provider: "google";
+interface Connection {
+  provider: string;
+  title: string;
+  scope: "personal" | "organization";
   configured: boolean;
   connected: boolean;
-  accountEmail: string | null;
+  account: string | null;
   connectedAt: string | null;
+  connectedBy: string | null;
+  canManage: boolean;
 }
 
-/** Your own Google account (ADR 0015): connect, see which account, disconnect. */
-function GoogleCard() {
-  const { t, tm } = useT();
-  const [c, setC] = useState<PersonalConnection>();
+const CARD: Record<string, { initials: string; sub: MessageKey; text: MessageKey }> = {
+  google: { initials: "G", sub: "conn.google.sub", text: "conn.google.text" },
+  notion: { initials: "N", sub: "conn.notion.sub", text: "conn.notion.text" },
+};
+
+/**
+ * One card per integration with its own "Connect" button (ADR 0015). Connect
+ * sends you to the provider's sign-in and consent screen and back here.
+ * Organization connections (Notion) can be made only by an admin.
+ */
+function ConnectionCard({ c, onChange, note }: { c: Connection; onChange: () => Promise<void>; note?: { text: string; ok: boolean } }) {
+  const { t } = useT();
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<{ text: string; ok: boolean }>();
-  const load = useCallback(async () => {
-    const list = await api<PersonalConnection[]>("/api/connections");
-    setC(list.find((x) => x.provider === "google"));
-  }, []);
-  useEffect(() => {
-    void load().catch(() => {});
-    // Result of the round trip through Google (?google=connected|cancelled|missing_scope|error).
-    const r = new URLSearchParams(window.location.search).get("google");
-    if (r) {
-      setNote({ text: tm(`conn.google.result.${r}`, t("conn.google.result.error")), ok: r === "connected" });
-      window.history.replaceState(null, "", "/connections");
-    }
-  }, [load, t, tm]);
+  const [msg, setMsg] = useState(note);
+  useEffect(() => setMsg(note), [note]);
+  const meta = CARD[c.provider];
+  const name = t(`connector.${c.provider === "google" ? "google-calendar" : "notion"}` as MessageKey);
 
   const connect = async () => {
     setBusy(true);
     try {
-      const { url } = await api<{ url: string }>("/api/connections/google/start", { method: "POST" });
+      const { url } = await api<{ url: string }>(`/api/connections/${c.provider}/start`, { method: "POST" });
       window.location.href = url;
     } catch {
-      setNote({ text: t("conn.google.result.error"), ok: false });
+      setMsg({ text: t("conn.result.error", { name }), ok: false });
       setBusy(false);
     }
   };
   const disconnect = async () => {
     setBusy(true);
     try {
-      const r = await api<{ revokedAtGoogle: boolean }>("/api/connections/google", { method: "DELETE" });
-      setNote({ text: r.revokedAtGoogle ? t("conn.google.disconnectedRevoked") : t("conn.google.disconnectedLocal"), ok: r.revokedAtGoogle });
-      await load();
+      const r = await api<{ revokedAtProvider: boolean }>(`/api/connections/${c.provider}`, { method: "DELETE" });
+      setMsg({ text: r.revokedAtProvider ? t("conn.disconnectedRevoked", { name }) : t("conn.disconnectedLocal", { name }), ok: true });
+      await onChange();
     } finally {
       setBusy(false);
     }
   };
 
-  if (!c) return null;
   return (
-    <section aria-label={t("connector.google-calendar")} className="rounded-[16px] border border-line bg-surface p-5">
+    <section aria-label={name} className="rounded-[16px] border border-line bg-surface p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-xl bg-brand-soft font-bold text-brand">G</span>
+          <span className="flex size-10 items-center justify-center rounded-xl bg-brand-soft font-bold text-brand">{meta?.initials ?? c.provider.slice(0, 2).toUpperCase()}</span>
           <div>
-            <h2 className="text-[17px] font-bold">{t("connector.google-calendar")}</h2>
-            <p className="text-[13px] text-muted">{t("conn.google.sub")}</p>
+            <h2 className="text-[17px] font-bold">{name}</h2>
+            {meta && <p className="text-[13px] text-muted">{t(meta.sub)}</p>}
           </div>
         </div>
         {c.connected ? (
-          <span className="rounded-full bg-brand-soft px-2.5 py-0.5 text-xs font-bold text-brand">{t("conn.google.connected")}</span>
+          <span className="rounded-full bg-brand-soft px-2.5 py-0.5 text-xs font-bold text-brand">{t("conn.connected")}</span>
         ) : (
           !c.configured && <span className="rounded-full bg-panel px-2.5 py-0.5 text-xs font-bold text-ink-2">{t("chat.notAvailableTitle")}</span>
         )}
       </div>
-      <p className="mt-3.5 text-sm">{c.configured ? t("conn.google.text") : t("conn.google.notConfigured")}</p>
-      {c.connected && c.accountEmail && <p className="mt-2 text-[13px] text-muted">{t("conn.google.connectedAs", { email: c.accountEmail })}</p>}
-      {note && (
-        <p role="status" className={`mt-3 rounded-xl px-3.5 py-2.5 text-sm ${note.ok ? "bg-brand-soft text-brand" : "bg-warn-bg text-warn-ink"}`}>
-          {note.text}
+      <p className="mt-3.5 text-sm">{c.configured ? (meta ? t(meta.text) : "") : t("conn.notConfigured", { name })}</p>
+      {c.connected && c.account && (
+        <p className="mt-2 text-[13px] text-muted">
+          {c.scope === "organization" && c.connectedBy ? t("conn.connectedOrg", { account: c.account, who: c.connectedBy }) : t("conn.connectedAs", { account: c.account })}
         </p>
       )}
-      {c.configured && (
+      {c.configured && !c.canManage && <p className="mt-2 text-[13px] text-muted">{t("conn.notion.adminOnly")}</p>}
+      {msg && (
+        <p role="status" className={`mt-3 rounded-xl px-3.5 py-2.5 text-sm ${msg.ok ? "bg-brand-soft text-brand" : "bg-warn-bg text-warn-ink"}`}>
+          {msg.text}
+        </p>
+      )}
+      {c.configured && c.canManage && (
         <div className="mt-4">
           {c.connected ? (
             <button type="button" disabled={busy} onClick={() => void disconnect()} className="min-h-10 cursor-pointer rounded-full border border-line-strong px-4 text-sm font-semibold hover:bg-panel disabled:opacity-60">
-              {t("conn.google.disconnect")}
+              {t("conn.disconnect")}
             </button>
           ) : (
             <button type="button" disabled={busy} onClick={() => void connect()} className="min-h-10 cursor-pointer rounded-full bg-brand px-4 text-sm font-semibold text-on-brand disabled:opacity-60">
-              {t("conn.google.connect")}
+              {t("conn.connect", { name })}
             </button>
           )}
         </div>
       )}
     </section>
+  );
+}
+
+/** Loads every integration's state, and shows the result of a round trip through a provider (?provider=…&result=…). */
+const RESULTS = ["connected", "cancelled", "missing_scope", "error"];
+
+function ConnectionCards() {
+  const { t } = useT();
+  const [list, setList] = useState<Connection[]>([]);
+  const [result, setResult] = useState<{ provider: string; result: string }>();
+  const load = useCallback(async () => setList(await api<Connection[]>("/api/connections")), []);
+  useEffect(() => {
+    void load().catch(() => {});
+    const q = new URLSearchParams(window.location.search);
+    const provider = q.get("provider");
+    const r = q.get("result");
+    if (provider && r) {
+      setResult({ provider, result: r });
+      window.history.replaceState(null, "", "/connections");
+    }
+  }, [load]);
+  return (
+    <>
+      {list.map((c) => {
+        const name = t(`connector.${c.provider === "google" ? "google-calendar" : "notion"}` as MessageKey);
+        const key = (RESULTS.includes(result?.result ?? "") ? `conn.result.${result!.result}` : "conn.result.error") as MessageKey;
+        const note = result?.provider === c.provider ? { text: t(key, { name }), ok: result.result === "connected" } : undefined;
+        return <ConnectionCard key={c.provider} c={c} onChange={load} note={note} />;
+      })}
+    </>
   );
 }
 
@@ -191,7 +227,7 @@ export default function ConnectionsPage() {
               );
             })}
 
-            {me && <GoogleCard />}
+            {me && <ConnectionCards />}
 
             <section aria-label="Microsoft 365" className="rounded-[16px] border border-line bg-surface p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">

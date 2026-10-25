@@ -122,3 +122,70 @@ export function memoryConnectionRows(): SealedConnectionRows & { rows: Map<strin
     },
   };
 }
+
+/** A local fake of Notion's OAuth endpoints (public integration), for tests only. */
+export class FakeNotionOAuth {
+  server!: Server;
+  endpoints!: { authorize: string; token: string };
+  private readonly codes = new Map<string, { redirectUri: string; workspace: string }>();
+  readonly refreshTokens = new Set<string>();
+  /** Lifetime to report for new tokens; undefined = no expiry (Notion's classic behaviour). */
+  expiresIn: number | undefined;
+  private n = 0;
+
+  constructor(private readonly client = { id: "notion-client", secret: "notion-secret" }) {}
+
+  async start(): Promise<this> {
+    this.server = createServer((req, res) => void this.handle(req, res));
+    await new Promise<void>((r) => this.server.listen(0, "127.0.0.1", r));
+    const base = `http://127.0.0.1:${(this.server.address() as AddressInfo).port}`;
+    this.endpoints = { authorize: `${base}/v1/oauth/authorize`, token: `${base}/v1/oauth/token` };
+    return this;
+  }
+
+  close() {
+    this.server?.close();
+  }
+
+  /** What Notion does after the user signs in and picks pages: the code for the redirect. */
+  consent(authorizationUrl: string, opts: { workspace: string }): string {
+    const u = new URL(authorizationUrl);
+    const code = `ncode-${++this.n}`;
+    this.codes.set(code, { redirectUri: u.searchParams.get("redirect_uri") ?? "", workspace: opts.workspace });
+    return code;
+  }
+
+  private async handle(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse) {
+    const chunks: Buffer[] = [];
+    for await (const c of req) chunks.push(c as Buffer);
+    const json = (status: number, body: unknown) => res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body));
+    if (req.method !== "POST" || req.url !== "/v1/oauth/token") return json(404, {});
+    const basic = `Basic ${Buffer.from(`${this.client.id}:${this.client.secret}`).toString("base64")}`;
+    if (req.headers.authorization !== basic) return json(401, { error: "invalid_client" });
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}") as Record<string, string>;
+    const issue = (workspace: string) => {
+      const rt = `nrt-${++this.n}`;
+      this.refreshTokens.add(rt);
+      return json(200, {
+        access_token: `ntn-at-${++this.n}`,
+        token_type: "bearer",
+        bot_id: "bot-1",
+        workspace_id: "ws-1",
+        workspace_name: workspace,
+        refresh_token: rt,
+        ...(this.expiresIn ? { expires_in: this.expiresIn } : {}),
+      });
+    };
+    if (body.grant_type === "authorization_code") {
+      const c = this.codes.get(body.code ?? "");
+      this.codes.delete(body.code ?? "");
+      if (!c || c.redirectUri !== body.redirect_uri) return json(400, { error: "invalid_grant" });
+      return issue(c.workspace);
+    }
+    if (body.grant_type === "refresh_token") {
+      if (!this.refreshTokens.delete(body.refresh_token ?? "")) return json(400, { error: "invalid_grant" });
+      return issue("Refreshed workspace");
+    }
+    return json(400, { error: "unsupported_grant_type" });
+  }
+}

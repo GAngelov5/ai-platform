@@ -66,6 +66,9 @@ const EnvSchema = z.object({
   CONNECTION_ENCRYPTION_KEY: z.string().min(1).optional(),
   // Notion source (ADR 0015). The token itself is read by reference (NOTION_TOKEN), never stored.
   NOTION_TOKEN: z.string().min(1).optional(),
+  // Or: a Notion public integration, so an admin connects with "Connect" (Notion's own sign-in and page picker).
+  NOTION_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+  NOTION_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
   /** Platform groups that may read every page shared with the Notion integration. */
   NOTION_ACL_GROUPS: z.string().default("all-staff"),
   ACTION_PROPOSAL_TTL_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(30),
@@ -113,14 +116,17 @@ export interface PlatformConfig {
     proposalTtlMinutes: number;
     /** Personal Google connections; absent when not configured. */
     google?: { clientId: string; clientSecret: string; redirectUri: string };
+    /** Notion "Connect" (organization connection, admins only). */
+    notion?: { clientId: string; clientSecret: string; redirectUri: string };
     connectionEncryptionKey?: string;
   };
   ingestion: {
     sourcesJson?: string;
     intervalMinutes: number;
     includeEvalCorpus: boolean;
-    /** Adds the Notion source to the default sources when NOTION_TOKEN is set. */
-    notion?: { aclGroups: string[] };
+    /** Adds the Notion source to the default sources when NOTION_TOKEN or the Notion OAuth client is set. */
+    /** viaConnection: the token comes from the admin's "Connect Notion", not NOTION_TOKEN. */
+    notion?: { aclGroups: string[]; viaConnection: boolean };
   };
   model:
     | { mode: "local" | "hybrid"; provider: "fake" }
@@ -237,11 +243,13 @@ export function loadPlatformConfig(
 
   if (!!e.GOOGLE_OAUTH_CLIENT_ID !== !!e.GOOGLE_OAUTH_CLIENT_SECRET) problems.push("set both GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET, or neither");
   if (e.GOOGLE_OAUTH_CLIENT_ID && !e.CONNECTION_ENCRYPTION_KEY) problems.push("CONNECTION_ENCRYPTION_KEY is required for personal Google connections");
+  if (!!e.NOTION_OAUTH_CLIENT_ID !== !!e.NOTION_OAUTH_CLIENT_SECRET) problems.push("set both NOTION_OAUTH_CLIENT_ID and NOTION_OAUTH_CLIENT_SECRET, or neither");
+  if (e.NOTION_OAUTH_CLIENT_ID && !e.CONNECTION_ENCRYPTION_KEY) problems.push("CONNECTION_ENCRYPTION_KEY is required for the Notion connection");
   if (e.CONNECTION_ENCRYPTION_KEY && Buffer.from(e.CONNECTION_ENCRYPTION_KEY, "base64").length !== 32) {
     problems.push("CONNECTION_ENCRYPTION_KEY must be 32 random bytes, base64-encoded (openssl rand -base64 32)");
   }
   const notionGroups = e.NOTION_ACL_GROUPS.split(",").map((g) => g.trim()).filter(Boolean);
-  if (e.NOTION_TOKEN && notionGroups.length === 0) problems.push("NOTION_ACL_GROUPS must list at least one platform group");
+  if ((e.NOTION_TOKEN || e.NOTION_OAUTH_CLIENT_ID) && notionGroups.length === 0) problems.push("NOTION_ACL_GROUPS must list at least one platform group");
 
   if (e.MCP_SERVERS) {
     const parsed = safeJson(e.MCP_SERVERS);
@@ -313,13 +321,16 @@ export function loadPlatformConfig(
       google: e.GOOGLE_OAUTH_CLIENT_ID
         ? { clientId: e.GOOGLE_OAUTH_CLIENT_ID, clientSecret: e.GOOGLE_OAUTH_CLIENT_SECRET!, redirectUri: `${new URL(e.PUBLIC_ORIGIN).origin}/api/connections/google/callback` }
         : undefined,
+      notion: e.NOTION_OAUTH_CLIENT_ID
+        ? { clientId: e.NOTION_OAUTH_CLIENT_ID, clientSecret: e.NOTION_OAUTH_CLIENT_SECRET!, redirectUri: `${new URL(e.PUBLIC_ORIGIN).origin}/api/connections/notion/callback` }
+        : undefined,
       connectionEncryptionKey: e.CONNECTION_ENCRYPTION_KEY,
     },
     ingestion: {
       sourcesJson: e.KNOWLEDGE_SOURCES,
       intervalMinutes: e.INGEST_INTERVAL_MINUTES,
       includeEvalCorpus: e.KNOWLEDGE_INCLUDE_EVAL_CORPUS,
-      notion: e.NOTION_TOKEN ? { aclGroups: notionGroups } : undefined,
+      notion: e.NOTION_TOKEN || e.NOTION_OAUTH_CLIENT_ID ? { aclGroups: notionGroups, viaConnection: !e.NOTION_TOKEN } : undefined,
     },
     model:
       e.MODEL_PROVIDER === "openai-compatible"

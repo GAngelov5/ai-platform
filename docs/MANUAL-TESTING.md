@@ -50,7 +50,7 @@ warning. Sign in through the dev login and choose a user.
 **Automated checks first.** If these fail, stop and report the failure:
 
 ```bash
-pnpm typecheck && pnpm test                       # ~1 min; 18 packages, ~205 tests
+pnpm typecheck && pnpm test                       # ~1 min; 18 packages, ~214 tests
 SMOKE_BASE_URL=https://localhost:8443 SMOKE_INSECURE_TLS=1 pnpm smoke
 ```
 
@@ -269,9 +269,10 @@ Needs your own Google OAuth client and Notion integration: follow
 | 13.5 | Bob | Same question | Nothing from Alice's calendar. Bob's own calendar is "not connected". |
 | 13.6 | Alice | **Disconnect** | "Disconnected. Access was also revoked at Google." In your Google account → Security → Third-party access, the app is gone. |
 | 13.7 | Dana | **Admin → Audit**, filter `connection.` | `connection.google.connected` and `…disconnected` for alice. No token values anywhere. |
-| 13.8 | Dana | **Admin → Sources** | A `notion` source with the number of shared pages, indexed. |
+| 13.8 | Dana | **Your connections → Connect Notion** → sign in at Notion → pick pages → Allow | Back on Your connections: "Workspace … · connected by Dana". Within about a minute, **Admin → Sources** shows `notion` with your pages, indexed. |
+| 13.8a | Alice | **Your connections** | The Notion card shows it is connected, with no button: "An administrator connects Notion for the whole organisation." |
 | 13.9 | Alice | Knowledge Assistant: ask about a fact on a shared Notion page | The answer cites the Notion page by its title. |
-| 13.10 | — | Unshare a page in Notion (⋯ → Connections → remove), then run `ingest notion` (setup §4) | The page is tombstoned; the same question no longer cites it. |
+| 13.10 | Dana | **Disconnect** Notion, wait about a minute | Admin → Sources: the Notion pages are gone from the index; the same question no longer cites them. |
 | 13.11 | — | Docker only: `docker logs $(docker ps -qf name=egress-proxy)` | `egress` lines only for `oauth2.googleapis.com`, `www.googleapis.com` and `api.notion.com`. |
 
 ## What you can't test yet (and why)

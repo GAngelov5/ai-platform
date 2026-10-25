@@ -31,6 +31,8 @@
         "CONNECTION_ENCRYPTION_KEY",
         "NOTION_TOKEN",
         "NOTION_ACL_GROUPS",
+        "NOTION_OAUTH_CLIENT_SECRET",
+        "NOTION_OAUTH_CLIENT_ID",
         "HTTPS_PROXY",
         "NO_PROXY",
         "NODE_USE_ENV_PROXY"

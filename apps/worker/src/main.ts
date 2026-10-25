@@ -9,7 +9,7 @@ import { fetchMcpToolPins } from "@platform/connectors";
 import { ConfigurationError, LicenceError, loadEntitlements, LOG_REDACT_PATHS, loadPlatformConfig, mcpTokenVar, redactUrl } from "@platform/security";
 import { WorkflowService } from "@platform/workflows";
 import { seedFixtures } from "./seed.js";
-import { ingestAll } from "./ingest.js";
+import { adapterOptions, ingestAll } from "./ingest.js";
 
 const FIXTURES_ROOT = process.env.FIXTURES_ROOT ?? fileURLToPath(new URL("../../../fixtures", import.meta.url));
 /** Same default as the API: the development licence outside production (ADR 0014). */
@@ -103,7 +103,7 @@ async function main() {
       const h = connectDatabase(c.databaseUrl!, { max: 2 });
       try {
         await h.withLock(indexLock(c.customerId), async () => {
-          const reports = await ingestAll(h.db, c.customerId, loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT, { includeEvalCorpus: c.ingestion.includeEvalCorpus, notion: c.ingestion.notion }), (m, d) => log.info(d ?? {}, m), process.argv[3]);
+          const reports = await ingestAll(h.db, c.customerId, loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT, { includeEvalCorpus: c.ingestion.includeEvalCorpus, notion: c.ingestion.notion }), (m, d) => log.info(d ?? {}, m), process.argv[3], adapterOptions(c, h.db));
           for (const [id, r] of Object.entries(reports)) log.info({ source: id, ...r }, "ingestion complete");
           if (c.knowledge.provider === "lightrag" && process.argv.includes("--sync")) {
             const k = c.knowledge;
@@ -208,7 +208,7 @@ async function main() {
             const run = await h.withLock(
               indexLock(c.customerId),
               async () => {
-                const reports = await ingestAll(h.db, c.customerId, sources, (m, d) => log.info(d ?? {}, m));
+                const reports = await ingestAll(h.db, c.customerId, sources, (m, d) => log.info(d ?? {}, m), undefined, adapterOptions(c, h.db));
                 const changed = Object.values(reports).some((r) => r.upserted || r.tombstoned || r.aclChanged);
                 let sync: unknown = "skipped";
                 // Reconcile on every run, not only after changes: a sync that hit its
@@ -238,7 +238,7 @@ async function main() {
               indexLock(c.customerId),
               async () => {
                 const reports: Record<string, unknown> = {};
-                for (const id of requested) Object.assign(reports, await ingestAll(h.db, c.customerId, sources, (m, d) => log.info(d ?? {}, m), id));
+                for (const id of requested) Object.assign(reports, await ingestAll(h.db, c.customerId, sources, (m, d) => log.info(d ?? {}, m), id, adapterOptions(c, h.db)));
                 let sync: unknown = "skipped";
                 if (c.knowledge.provider === "lightrag") {
                   const k = c.knowledge;

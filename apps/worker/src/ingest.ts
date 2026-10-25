@@ -1,4 +1,6 @@
+import { NotionProvider, notionTokenResolver, PersonalConnectionStore } from "@platform/connectors";
 import { createRepositories, type Database } from "@platform/database";
+import { SecretSealer, type PlatformConfig } from "@platform/security";
 import { adapterFor, ingestSource, type IngestionReport, type IngestionStore, type SourceConfig } from "@platform/knowledge";
 
 /** The generic pipeline's storage, backed by the platform database. */
@@ -25,6 +27,17 @@ export function ingestionStore(db: Database): IngestionStore {
   };
 }
 
+/** How source adapters get their credentials: env secrets, and the admin's "Connect Notion" (ADR 0015). */
+export function adapterOptions(config: PlatformConfig, db: Database) {
+  const n = config.integrations.notion;
+  const key = config.integrations.connectionEncryptionKey;
+  return {
+    secret: (name: string) => process.env[name],
+    notionConnection:
+      n && key ? notionTokenResolver(new PersonalConnectionStore(createRepositories(db).connections, new SecretSealer(key)), new NotionProvider(n), config.customerId) : undefined,
+  };
+}
+
 /** Ingests every configured source (or one). Sources run one after another; one failing source never blocks the others. */
 export async function ingestAll(
   db: Database,
@@ -32,13 +45,14 @@ export async function ingestAll(
   sources: readonly SourceConfig[],
   log: (msg: string, detail?: Record<string, unknown>) => void,
   only?: string,
+  adapterOpts: Parameters<typeof adapterFor>[1] = {},
 ): Promise<Record<string, IngestionReport>> {
   const store = ingestionStore(db);
   const out: Record<string, IngestionReport> = {};
   for (const s of sources) {
     if (only && s.id !== only) continue;
     try {
-      out[s.id] = await ingestSource(customerId, s, adapterFor(s), store, log);
+      out[s.id] = await ingestSource(customerId, s, adapterFor(s, adapterOpts), store, log);
     } catch (err) {
       log("source ingestion failed", { source: s.id, error: (err as Error).message });
     }

@@ -1,6 +1,14 @@
 import { buildIntegrations, type ActionService } from "@platform/actions";
 import { AgentRegistry, type CapabilityRegistry } from "@platform/agents";
-import type { ConnectorRegistry, GoogleEndpoints, GoogleOAuthClient, PersonalConnectionStore } from "@platform/connectors";
+import {
+  GoogleCalendarProvider,
+  NotionProvider,
+  PersonalConnectionStore,
+  type ConnectorRegistry,
+  type GoogleEndpoints,
+  type NotionOAuthEndpoints,
+  type OAuthProvider,
+} from "@platform/connectors";
 import { AgentRuntime, FakeModelGateway, OpenAICompatibleGateway, type ModelGateway } from "@platform/ai";
 import { knowledgeAssistant } from "@platform/agent-knowledge-assistant";
 import { meetingPrep } from "@platform/agent-meeting-prep";
@@ -18,7 +26,7 @@ import {
   RagflowKnowledgeAdapter,
   type KnowledgeAdapter,
 } from "@platform/knowledge";
-import { loadEntitlements, mcpTokenVar, type Entitlements, type PlatformConfig } from "@platform/security";
+import { loadEntitlements, mcpTokenVar, SecretSealer, type Entitlements, type PlatformConfig } from "@platform/security";
 import { WorkflowService } from "@platform/workflows";
 import { fileURLToPath } from "node:url";
 import type { Logger } from "./logger.js";
@@ -51,8 +59,8 @@ export interface PlatformDeps {
   connectors: ConnectorRegistry;
   workflows: WorkflowService;
   admin: AdminQueries;
-  /** Personal Google connections; undefined when not configured (ADR 0015). */
-  google?: { oauth: GoogleOAuthClient; store: PersonalConnectionStore };
+  /** "Connect" integrations (ADR 0015): the configured providers and the sealed token store. */
+  connections: { providers: OAuthProvider[]; store?: PersonalConnectionStore };
 }
 
 /** Chunks of exactly the catalogued version, from the platform content store (ADR 0009). */
@@ -118,8 +126,9 @@ export async function buildDeps(input: {
   /** Secret resolver; defaults to process.env. */
   secret?: (name: string) => string | undefined;
   entitlements?: Entitlements;
-  /** Tests only: a local fake of Google's endpoints. */
+  /** Tests only: local fakes of Google's and Notion's endpoints. */
   googleEndpoints?: GoogleEndpoints;
+  notionEndpoints?: NotionOAuthEndpoints;
 }): Promise<PlatformDeps> {
   const { config, db, logger } = input;
   const repos = createRepositories(db);
@@ -159,6 +168,11 @@ export async function buildDeps(input: {
       ? { customerId: config.customerId, ...g, encryptionKey: config.integrations.connectionEncryptionKey!, rows: repos.connections, endpoints: input.googleEndpoints }
       : undefined,
   });
+  const key = config.integrations.connectionEncryptionKey;
+  const providers: OAuthProvider[] = [];
+  if (google) providers.push(new GoogleCalendarProvider(google.oauth));
+  if (config.integrations.notion) providers.push(new NotionProvider(config.integrations.notion, input.notionEndpoints));
+  const connections = { providers, store: google?.store ?? (key ? new PersonalConnectionStore(repos.connections, new SecretSealer(key)) : undefined) };
   const runtime = new AgentRuntime({
     knowledge,
     model,
@@ -170,5 +184,5 @@ export async function buildDeps(input: {
   });
   // The API creates and lists workflows; the worker dispatches and executes them.
   const workflows = new WorkflowService({ db, capabilities, actions, principals: repos.principals, audit: repos.audit, policyVersion: config.policyVersion, entitlements });
-  return { config, repos, knowledge, agents, entitlements, runtime, model, logger, pingDatabase: input.pingDatabase, actions, capabilities, connectors, workflows, admin: createAdminQueries(db), google };
+  return { config, repos, knowledge, agents, entitlements, runtime, model, logger, pingDatabase: input.pingDatabase, actions, capabilities, connectors, workflows, admin: createAdminQueries(db), connections };
 }

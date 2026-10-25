@@ -94,6 +94,37 @@ the attacker's user. With the nonce, a link started elsewhere fails.
     partition matching their groups.
   - It shows on Admin → Sources like any other source.
 
+### 3a. One "Connect" button per integration
+
+- Every integration that has an OAuth flow gets a **Connect** card on Your
+  connections. The same endpoints serve all of them:
+  `POST /api/connections/:provider/start`,
+  `GET /api/connections/:provider/callback` and
+  `DELETE /api/connections/:provider`.
+  - Each is guarded by the same state and browser-nonce checks, sealing and
+    audit.
+- **Personal** providers (Google Calendar) are connected by each user, for
+  themselves.
+- **Organization** providers (Notion) are connected once, by an **admin**.
+  - They are stored under the reserved owner `@organization`, with who
+    connected them.
+  - The admin role is checked again at the callback.
+  - Other users see the state but have no button.
+  - Notion pages become documents that everyone in `NOTION_ACL_GROUPS` can
+    read, so a non-admin must not be able to publish their pages to the
+    company.
+- **Notion "Connect"** uses a public integration.
+  - Notion's own screen does the sign-in and the page picking.
+  - Notion doesn't support PKCE, so only the state and nonce apply.
+  - Tokens without a lifetime are treated as long-lived. Ones with
+    `expires_in` and a refresh token are refreshed.
+- **Connecting or disconnecting requests a sync** of the `notion` source.
+  Disconnected means an empty, complete listing, so every Notion page is
+  removed from the index. Notion has no revoke call; the UI says to remove
+  the app in Notion's settings.
+- `NOTION_TOKEN` (internal integration) still works when no Connect button
+  is wanted.
+
 ### 4. Egress: one allowlisting proxy
 
 - The API and worker networks stay `internal` (no route out).
@@ -150,8 +181,24 @@ the attacker's user. With the nonce, a link started elsewhere fails.
   - the Meeting Preparation Assistant cites Alice's Google event, and
     nothing of it reaches Bob
   - disconnect revokes and is audited, with no tokens in the audit
-- **Browser:** the connections page in English and Bulgarian, including
-  the cancelled state.
+- `packages/connectors/test/oauth.test.ts` (fake Notion OAuth):
+  - the authorize URL
+  - client credentials and single-use codes
+  - the workspace name is recorded
+  - the organization owner
+  - the token resolver: "not connected", and refresh
+- `apps/api/test/api.test.ts`, "Connect Notion":
+  - only an admin can start or remove it
+  - everyone sees the workspace and who connected it
+  - the callback stores it and requests a sync
+  - an admin who lost the role before the callback fails
+  - disconnect is audited
+- `packages/knowledge/test/notion.test.ts`: the connection token is used,
+  and every page is removed once disconnected.
+- **Browser:**
+  - the connections page in English and Bulgarian, including the cancelled
+    state
+  - **Connect Notion** lands on Notion's sign-in page (`app.notion.com/login`)
 
 ## Not verified yet
 

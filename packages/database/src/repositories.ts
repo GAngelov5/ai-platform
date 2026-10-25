@@ -143,6 +143,12 @@ export function createRepositories(db: Database) {
           .orderBy(asc(principals.id));
         return rows.map(toPrincipal);
       },
+      async setRoles(customerId: string, principalId: string, roles: string[]): Promise<void> {
+        await db
+          .update(principals)
+          .set({ roles })
+          .where(and(eq(principals.customerId, customerId), eq(principals.id, principalId)));
+      },
       async setGroups(customerId: string, principalId: string, groups: string[]): Promise<void> {
         await db
           .update(principals)
@@ -455,6 +461,7 @@ export function createRepositories(db: Database) {
         principalId: string;
         provider: string;
         accountEmail: string | null;
+        connectedBy: string | null;
         scopes: string[];
         accessTokenSealed: string;
         refreshTokenSealed: string | null;

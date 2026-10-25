@@ -12,7 +12,7 @@ import { loadPlatformConfig } from "@platform/security";
 import { seedFixtures } from "@platform/worker/seed";
 import { createTrackerHttpServer, TrackerStore } from "@platform/mcp-atlas-tracker";
 import { fetchMcpToolPins } from "@platform/connectors";
-import { FakeGoogle } from "@platform/connectors/testing";
+import { FakeGoogle, FakeNotionOAuth } from "@platform/connectors/testing";
 import { randomBytes } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -720,16 +720,17 @@ describe("personal Google Calendar connection (ADR 0015)", () => {
 
   it("connects Alice's own calendar through Google, bound to her browser", async () => {
     const alice = await new Client(g.base).login("alice");
-    expect((await alice.req("GET", "/api/connections")).json).toEqual([expect.objectContaining({ provider: "google", configured: true, connected: false })]);
+    const googleCard = (r: { json: { provider: string }[] }) => r.json.find((x) => x.provider === "google");
+    expect(googleCard(await alice.req("GET", "/api/connections"))).toEqual(expect.objectContaining({ configured: true, connected: false, scope: "personal", canManage: true }));
     const url = await start(alice);
     expect(url.searchParams.get("redirect_uri")).toBe("https://brain.example.test/api/connections/google/callback");
     const code = google.consent(url.toString(), { email: "alice@example.test" });
-    expect(await callback(alice, { state: url.searchParams.get("state")!, code })).toBe("/connections?google=connected");
-    expect((await alice.req("GET", "/api/connections")).json[0]).toMatchObject({ connected: true, accountEmail: "alice@example.test" });
+    expect(await callback(alice, { state: url.searchParams.get("state")!, code })).toBe("/connections?provider=google&result=connected");
+    expect(googleCard(await alice.req("GET", "/api/connections"))).toMatchObject({ connected: true, account: "alice@example.test" });
 
     // Nobody else sees or uses it.
     const bob = await new Client(g.base).login("bob");
-    expect((await bob.req("GET", "/api/connections")).json[0]).toMatchObject({ connected: false, accountEmail: null });
+    expect(googleCard(await bob.req("GET", "/api/connections"))).toMatchObject({ connected: false, account: null });
   });
 
   it("refuses a callback from another browser (no nonce), and any replay", async () => {
@@ -738,16 +739,16 @@ describe("personal Google Calendar connection (ADR 0015)", () => {
     const state = url.searchParams.get("state")!;
     const code = google.consent(url.toString(), { email: "attacker@example.test" });
     // The link opened in a different browser: rejected, and the state is used up.
-    expect(await callback(alice, { state, code }, { withNonce: false })).toBe("/connections?google=error");
-    expect(await callback(alice, { state, code })).toBe("/connections?google=error");
-    expect((await alice.req("GET", "/api/connections")).json[0]).toMatchObject({ accountEmail: "alice@example.test" });
-    expect(await callback(alice, { state: "made-up", code: "x" })).toBe("/connections?google=error");
+    expect(await callback(alice, { state, code }, { withNonce: false })).toBe("/connections?provider=google&result=error");
+    expect(await callback(alice, { state, code })).toBe("/connections?provider=google&result=error");
+    expect((await alice.req("GET", "/api/connections")).json.find((x: { provider: string }) => x.provider === "google")).toMatchObject({ account: "alice@example.test" });
+    expect(await callback(alice, { state: "made-up", code: "x" })).toBe("/connections?provider=google&result=error");
   });
 
   it("reports a cancelled consent, and requires a session to start", async () => {
     const alice = await new Client(g.base).login("alice");
     const url = await start(alice);
-    expect(await callback(alice, { state: url.searchParams.get("state")!, error: "access_denied" })).toBe("/connections?google=cancelled");
+    expect(await callback(alice, { state: url.searchParams.get("state")!, error: "access_denied" })).toBe("/connections?provider=google&result=cancelled");
     const anon = new Client(g.base);
     await anon.req("GET", "/api/auth/csrf");
     expect((await anon.req("POST", "/api/connections/google/start")).status).toBe(401);
@@ -770,9 +771,9 @@ describe("personal Google Calendar connection (ADR 0015)", () => {
   it("disconnects: revoked at Google, removed here, audited", async () => {
     const alice = await new Client(g.base).login("alice");
     const r = await alice.req("DELETE", "/api/connections/google");
-    expect(r.json).toEqual({ connected: false, revokedAtGoogle: true });
+    expect(r.json).toEqual({ connected: false, revokedAtProvider: true });
     expect(google.revoked.length).toBe(1);
-    expect((await alice.req("GET", "/api/connections")).json[0]).toMatchObject({ connected: false });
+    expect((await alice.req("GET", "/api/connections")).json.find((x: { provider: string }) => x.provider === "google")).toMatchObject({ connected: false });
     const audit = (await (await new Client(g.base).login("dana")).req("GET", "/api/admin/audit?action=connection.")).json as { action: string; outcome: string }[];
     expect(audit.map((a) => a.action)).toEqual(expect.arrayContaining(["connection.google.connected", "connection.google.disconnected", "connection.google.callback_rejected"]));
     expect(JSON.stringify(audit)).not.toMatch(/at-\d|rt-\d/);
@@ -780,7 +781,87 @@ describe("personal Google Calendar connection (ADR 0015)", () => {
 
   it("is off, with a clear state, when not configured", async () => {
     const alice = await as("alice");
-    expect((await alice.req("GET", "/api/connections")).json[0]).toMatchObject({ configured: false, connected: false });
+    expect((await alice.req("GET", "/api/connections")).json).toEqual([
+      expect.objectContaining({ provider: "google", configured: false, connected: false }),
+      expect.objectContaining({ provider: "notion", configured: false, connected: false, canManage: false }),
+    ]);
     expect((await alice.req("POST", "/api/connections/google/start")).status).toBe(404);
+  });
+});
+
+describe("Connect Notion (organization connection, ADR 0015)", () => {
+  let notion: FakeNotionOAuth;
+  let n: Awaited<ReturnType<typeof boot>>;
+
+  beforeAll(async () => {
+    notion = await new FakeNotionOAuth().start();
+    n = await boot(
+      {
+        NOTION_OAUTH_CLIENT_ID: "notion-client",
+        NOTION_OAUTH_CLIENT_SECRET: "notion-secret",
+        CONNECTION_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
+        PUBLIC_ORIGIN: "https://brain.example.test",
+      },
+      { notionEndpoints: notion.endpoints },
+    );
+  });
+  afterAll(async () => {
+    await n?.app.close();
+    await n?.deps.connectors.closeAll();
+    notion?.close();
+  });
+
+  const card = async (c: Client) => ((await c.req("GET", "/api/connections")).json as { provider: string }[]).find((x) => x.provider === "notion") as Record<string, unknown>;
+
+  it("only an admin can connect; everyone sees the state", async () => {
+    const alice = await new Client(n.base).login("alice");
+    expect(await card(alice)).toMatchObject({ configured: true, connected: false, scope: "organization", canManage: false });
+    expect((await alice.req("POST", "/api/connections/notion/start")).status).toBe(404);
+    expect((await alice.req("DELETE", "/api/connections/notion")).status).toBe(404);
+  });
+
+  it("Dana connects through Notion's screen; the workspace and who connected it are shown, and a sync is requested", async () => {
+    const dana = await new Client(n.base).login("dana");
+    const r = await dana.req("POST", "/api/connections/notion/start");
+    const url = new URL(r.json.url as string);
+    expect(url.origin + url.pathname).toBe(notion.endpoints.authorize);
+    expect(url.searchParams.get("redirect_uri")).toBe("https://brain.example.test/api/connections/notion/callback");
+    const code = notion.consent(url.toString(), { workspace: "Acme wiki" });
+    const nonce = dana.cookies.get("platform_oauth_nonce");
+    const res = await fetch(`${n.base}/api/connections/notion/callback?${new URLSearchParams({ state: url.searchParams.get("state")!, code })}`, {
+      redirect: "manual",
+      headers: { cookie: `platform_oauth_nonce=${nonce}` },
+    });
+    expect(res.headers.get("location")).toBe("/connections?provider=notion&result=connected");
+
+    const alice = await new Client(n.base).login("alice");
+    expect(await card(alice)).toMatchObject({ connected: true, account: "Acme wiki", connectedBy: "Dana Operator (platform admin)", canManage: false });
+    const sources = (await dana.req("GET", "/api/admin/sources")).json as { id: string; syncRequested: boolean }[];
+    expect(sources.find((s) => s.id === "notion")).toMatchObject({ syncRequested: true });
+  });
+
+  it("an admin who lost the role before the callback can't complete it", async () => {
+    const dana = await new Client(n.base).login("dana");
+    const url = new URL((await dana.req("POST", "/api/connections/notion/start")).json.url as string);
+    const code = notion.consent(url.toString(), { workspace: "Other" });
+    await createRepositories(db).principals.setRoles("cust_demo", "dana", ["user"]);
+    try {
+      const res = await fetch(`${n.base}/api/connections/notion/callback?${new URLSearchParams({ state: url.searchParams.get("state")!, code })}`, {
+        redirect: "manual",
+        headers: { cookie: `platform_oauth_nonce=${dana.cookies.get("platform_oauth_nonce")}` },
+      });
+      expect(res.headers.get("location")).toBe("/connections?provider=notion&result=error");
+    } finally {
+      await createRepositories(db).principals.setRoles("cust_demo", "dana", ["user", "admin"]);
+    }
+    expect(await card(await new Client(n.base).login("alice"))).toMatchObject({ account: "Acme wiki" });
+  });
+
+  it("Dana disconnects: removed, audited, and a sync is requested to remove the pages", async () => {
+    const dana = await new Client(n.base).login("dana");
+    expect((await dana.req("DELETE", "/api/connections/notion")).json).toEqual({ connected: false, revokedAtProvider: false });
+    expect(await card(dana)).toMatchObject({ connected: false });
+    const audit = (await dana.req("GET", "/api/admin/audit?action=connection.notion")).json as { action: string }[];
+    expect(audit.map((a) => a.action)).toEqual(expect.arrayContaining(["connection.notion.connected", "connection.notion.disconnected"]));
   });
 });

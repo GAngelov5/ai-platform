@@ -43,6 +43,13 @@
       "when": 1792785444593,
       "tag": "0005_personal_connections",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792834703356,
+      "tag": "0006_connection_connected_by",
+      "breakpoints": true
     }
   ]
 }

@@ -189,4 +189,19 @@ describe("Notion through the ingestion pipeline", () => {
     const s = notionSource(["all-staff", "finance-legal"]);
     expect(s.aclMap).toEqual({ [NOTION_SHARED_GROUP]: "all-staff", [`${NOTION_SHARED_GROUP}#1`]: "finance-legal" });
   });
+
+  it("with Connect Notion: uses the connection's token, and removes every page once disconnected", async () => {
+    const { store, catalog } = memoryStore();
+    const base0 = defaultSources(FIXTURES, { notion: { aclGroups: ["all-staff"], viaConnection: true } }).find((x) => x.id === "notion")!;
+    const source = { ...base0, settings: { ...base0.settings, baseUrl: base } };
+    expect(source.settings).toMatchObject({ tokenFrom: "connection" });
+    expect(() => adapterFor(source, {})).toThrow(/connection store/);
+    let connected: string | undefined = TOKEN;
+    const opts = { notionConnection: async () => connected };
+    await ingestSource(C, source, adapterFor(source, opts), store, () => {});
+    expect([...catalog.values()].filter((d) => !d.tombstoned)).toHaveLength(2);
+    connected = undefined; // the admin disconnected Notion
+    await ingestSource(C, source, adapterFor(source, opts), store, () => {});
+    expect([...catalog.values()].every((d) => d.tombstoned)).toBe(true);
+  });
 });
