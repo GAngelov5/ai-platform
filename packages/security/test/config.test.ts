@@ -104,6 +104,16 @@ describe("platform configuration", () => {
     expect(() => loadPlatformConfig({ OIDC_ISSUER: "", RAGFLOW_BASE_URL: "", MODEL_BASE_URL: " " })).not.toThrow();
   });
 
+  it("refuses a public sign-in provider (Google) unless it says who may sign in", () => {
+    const google = { ...prodBase, OIDC_ISSUER: "https://accounts.google.com" };
+    expect(problems(google).join()).toMatch(/OIDC_ALLOWED_DOMAINS or OIDC_ALLOWED_EMAILS/);
+    expect(problems({ ...google, OIDC_ALLOWED_DOMAINS: "company.example" })).toEqual([]);
+    expect(problems({ ...google, OIDC_ALLOWED_EMAILS: "tester@gmail.example" })).toEqual([]);
+    expect(problems({ ...google, OIDC_ALLOWED_DOMAINS: "company.example", OIDC_DEFAULT_GROUPS: "All Staff" }).join()).toMatch(/not a platform group name/);
+    const auth = loadPlatformConfig({ ...google, OIDC_ALLOWED_DOMAINS: "@Company.Example", OIDC_ALLOWED_EMAILS: "Tester@Gmail.example", OIDC_DEFAULT_GROUPS: "all-staff" }).auth;
+    expect(auth).toMatchObject({ allowedDomains: ["company.example"], allowedEmails: ["tester@gmail.example"], defaultGroups: ["all-staff"] });
+  });
+
   it("defaults to synthetic, offline development settings", () => {
     const c = loadPlatformConfig({});
     expect(c.env).toBe("development");

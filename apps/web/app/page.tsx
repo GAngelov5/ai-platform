@@ -41,14 +41,14 @@ export default function Home() {
             </h1>
             {loginResult && (
               <p role="status" className="mt-3 rounded-xl bg-warn-bg px-3.5 py-2.5 text-sm text-warn-ink">
-                {loginResult === "cancelled" ? t("login.cancelled") : t("login.error")}
+                {loginResult === "cancelled" ? t("login.cancelled") : loginResult === "not_allowed" ? t("login.not_allowed") : t("login.error")}
               </p>
             )}
             {company && (
               <div className="mt-6 max-w-[520px] rounded-[16px] border border-line bg-surface p-6">
                 <p className="text-[14.5px] text-ink-2">{t("login.companyText")}</p>
                 {/* A full-page navigation: the identity provider's page can't be fetched. */}
-                <a href="/api/auth/oidc/login" className="mt-4 inline-flex min-h-11 items-center rounded-full bg-brand px-5 font-semibold text-on-brand no-underline hover:bg-brand-hover">
+                <a href="/api/auth/oidc/login" className="mt-4 inline-flex min-h-11 items-center rounded-full bg-brand px-5 font-semibold !text-on-brand no-underline hover:bg-brand-hover hover:!text-on-brand">
                   {t("login.company")}
                 </a>
               </div>

@@ -36,6 +36,12 @@ const EnvSchema = z.object({
   /** Directory groups whose members get the admin role (comma-separated). */
   OIDC_ADMIN_GROUPS: z.string().default(""),
   OIDC_SCOPES: z.string().default("openid email profile"),
+  /** Who may sign in, when the provider serves more than this company (Google): verified addresses ... */
+  OIDC_ALLOWED_EMAILS: z.string().default(""),
+  /** ... and/or whole domains. For Google, a domain means a Workspace domain (the hd claim). */
+  OIDC_ALLOWED_DOMAINS: z.string().default(""),
+  /** Platform groups every signed-in user gets (Google sends no groups). */
+  OIDC_DEFAULT_GROUPS: z.string().default(""),
 
   KNOWLEDGE_PROVIDER: z.enum(["fixture", "ragflow", "lightrag"]).default("fixture"),
   FIXTURES_DIR: z.string().optional(),
@@ -113,6 +119,9 @@ export interface PlatformConfig {
         groupsClaim: string;
         groupMap: Record<string, string>;
         adminGroups: string[];
+        allowedEmails: string[];
+        allowedDomains: string[];
+        defaultGroups: string[];
       };
   knowledge:
     | { provider: "fixture"; fixturesDir?: string }
@@ -159,6 +168,11 @@ export interface PlatformConfig {
       };
 }
 
+const splitList = (v: string) => v.split(",").map((x) => x.trim()).filter(Boolean);
+
+/** Providers whose accounts belong to the public, not to one organisation. */
+export const isPublicIdentityProvider = (issuer: string) => ["accounts.google.com", "login.microsoftonline.com/common", "login.microsoftonline.com/consumers"].some((h) => issuer.replace(/^https?:\/\//, "").startsWith(h));
+
 const DEV_PASSWORD_MARKERS = ["platform_dev", "changeme", "password"];
 
 /**
@@ -194,6 +208,11 @@ export function loadPlatformConfig(
     if (!e.OIDC_CLIENT_ID) problems.push("OIDC_CLIENT_ID is required when AUTH_MODE=oidc");
     if (!e.OIDC_CLIENT_SECRET) problems.push("OIDC_CLIENT_SECRET is required when AUTH_MODE=oidc");
     if (e.OIDC_ISSUER && prod && new URL(e.OIDC_ISSUER).protocol !== "https:") problems.push("production requires an https OIDC_ISSUER");
+    // A public provider signs in everyone who has an account there: say who may use this deployment.
+    if (e.OIDC_ISSUER && isPublicIdentityProvider(e.OIDC_ISSUER) && !splitList(e.OIDC_ALLOWED_EMAILS).length && !splitList(e.OIDC_ALLOWED_DOMAINS).length) {
+      problems.push("OIDC_ISSUER is a public provider (anyone with an account can sign in): set OIDC_ALLOWED_DOMAINS or OIDC_ALLOWED_EMAILS");
+    }
+    for (const g of splitList(e.OIDC_DEFAULT_GROUPS)) if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(g)) problems.push(`OIDC_DEFAULT_GROUPS: "${g}" is not a platform group name`);
   }
 
   // --- Transport / secrets ----------------------------------------------------
@@ -325,6 +344,9 @@ export function loadPlatformConfig(
             groupsClaim: e.OIDC_GROUPS_CLAIM,
             groupMap: oidcGroupMap,
             adminGroups: e.OIDC_ADMIN_GROUPS.split(",").map((g) => g.trim()).filter(Boolean),
+            allowedEmails: splitList(e.OIDC_ALLOWED_EMAILS).map((x) => x.toLowerCase()),
+            allowedDomains: splitList(e.OIDC_ALLOWED_DOMAINS).map((x) => x.toLowerCase().replace(/^@/, "")),
+            defaultGroups: splitList(e.OIDC_DEFAULT_GROUPS),
           }
         : { mode: "dev", devAuthEnabled: e.DEV_AUTH_ENABLED },
     knowledge:

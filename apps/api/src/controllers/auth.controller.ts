@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Inject, NotFoundException, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
+import { NotAllowedToSignIn } from "../auth/oidc.js";
 import { CSRF_COOKIE, DevLoginRequestSchema, SESSION_COOKIE, type DevPrincipal, type MeResponse } from "@platform/contracts";
 import { hashToken, newOpaqueToken } from "@platform/security";
 import type { CookieOptions, Response } from "express";
@@ -105,7 +106,7 @@ export class AuthController {
     const fail = async (reason: string) => {
       await repos.audit.write({ customerId: config.customerId, requestId: req.requestId, action: "auth.oidc_login", outcome: "denied", detail: { reason } }).catch(() => {});
       res.clearCookie(LOGIN_COOKIE, { path: "/api/auth/oidc/callback" });
-      res.redirect(302, `/?login=${reason === "cancelled" ? "cancelled" : "error"}`);
+      res.redirect(302, `/?login=${reason === "cancelled" || reason === "not_allowed" ? reason : "error"}`);
     };
     const state = query.get("state");
     if (!state || state.length > 200) return fail("no_state");
@@ -118,6 +119,7 @@ export class AuthController {
     try {
       identity = await oidc.finish(query, { state, nonce: pending.browserNonceHash, codeVerifier: pending.codeVerifier });
     } catch (err) {
+      if (err instanceof NotAllowedToSignIn) return fail("not_allowed");
       this.deps.logger.warn({ requestId: req.requestId, err: (err as Error).message }, "oidc sign-in rejected");
       return fail("token_rejected");
     }

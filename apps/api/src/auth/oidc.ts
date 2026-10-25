@@ -4,6 +4,9 @@ import type { PlatformConfig } from "@platform/security";
 
 type OidcConfig = Extract<PlatformConfig["auth"], { mode: "oidc" }>;
 
+/** Raised when the provider signed someone in who may not use this deployment. */
+export class NotAllowedToSignIn extends Error {}
+
 export interface SignedInIdentity {
   principalId: string;
   displayName: string;
@@ -62,6 +65,8 @@ export class OidcLogin {
       code_challenge_method: "S256",
       state,
       nonce,
+      // Google: with one Workspace domain, the account picker goes straight to it (a hint; enforced on return).
+      ...(this.isGoogle() && this.cfg.allowedDomains.length === 1 && !this.cfg.allowedEmails.length ? { hd: this.cfg.allowedDomains[0]! } : {}),
     });
     return { url: url.href, state, codeVerifier };
   }
@@ -78,7 +83,28 @@ export class OidcLogin {
     });
     const claims = tokens.claims();
     if (!claims?.sub) throw new Error("ID token without a subject");
-    return this.identity(claims as Record<string, unknown>);
+    const c = claims as Record<string, unknown>;
+    if (!this.allowed(c)) throw new NotAllowedToSignIn(`not allowed: ${typeof c.email === "string" ? c.email.split("@")[1] : "no email"}`);
+    return this.identity(c);
+  }
+
+  private isGoogle() {
+    return new URL(this.cfg.issuer).hostname === "accounts.google.com";
+  }
+
+  /**
+   * Whether this person may use the deployment. Without allow-lists, everyone the provider signs in
+   * (a company's own provider). Otherwise a verified email on the list, or an account in an allowed
+   * domain. For Google the domain must be the account's Workspace domain (hd): a personal Google
+   * account can be registered with any address, including one in the company's domain.
+   */
+  allowed(claims: Record<string, unknown>): boolean {
+    const { allowedEmails, allowedDomains } = this.cfg;
+    if (!allowedEmails.length && !allowedDomains.length) return true;
+    const email = typeof claims.email === "string" && claims.email_verified === true ? claims.email.toLowerCase() : undefined;
+    if (email && allowedEmails.includes(email)) return true;
+    const domain = this.isGoogle() ? (typeof claims.hd === "string" ? claims.hd.toLowerCase() : undefined) : email?.split("@")[1];
+    return !!domain && allowedDomains.includes(domain);
   }
 
   /** Maps ID-token claims to a platform identity. Unmapped directory groups grant nothing. */
@@ -87,7 +113,7 @@ export class OidcLogin {
     const directoryGroups = (Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : []).filter((g): g is string => typeof g === "string").slice(0, 500);
     // Keycloak sends group paths ("/atlas-team"); accept the map key with or without the slash.
     const lookup = (g: string) => this.cfg.groupMap[g] ?? this.cfg.groupMap[g.replace(/^\//, "")];
-    const groups = [...new Set(directoryGroups.map(lookup).filter((g): g is string => !!g))].sort();
+    const groups = [...new Set([...this.cfg.defaultGroups, ...directoryGroups.map(lookup).filter((g): g is string => !!g)])].sort();
     const isAdmin = directoryGroups.some((g) => this.cfg.adminGroups.includes(g) || this.cfg.adminGroups.includes(g.replace(/^\//, "")));
     const email = typeof claims.email === "string" && claims.email_verified !== false ? claims.email.toLowerCase().slice(0, 320) : undefined;
     const name = [claims.name, claims.preferred_username, email].find((v): v is string => typeof v === "string" && v.trim() !== "");

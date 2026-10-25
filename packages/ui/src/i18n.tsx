@@ -31,6 +31,7 @@ const en = {
   "login.company": "Sign in with your company account",
   "login.companyText": "You'll be sent to your organisation's sign-in page and back here. What you can see follows your groups there.",
   "login.cancelled": "Sign-in was cancelled.",
+  "login.not_allowed": "This account isn't allowed to sign in here. Use your company account, or ask your administrator to add you.",
   "login.error": "Sign-in didn't work. Try again; if it keeps failing, ask your administrator.",
   "login.synthetic": "Synthetic development identities only. Production rejects this sign-in method.",
   // chat
@@ -368,6 +369,7 @@ const bg: Record<MessageKey, string> = {
   "login.company": "Вход с фирмен акаунт",
   "login.companyText": "Ще бъдете пренасочени към страницата за вход на организацията и обратно тук. Достъпът ви следва групите ви там.",
   "login.cancelled": "Входът беше отменен.",
+  "login.not_allowed": "Този акаунт няма право на достъп тук. Използвайте фирмения си акаунт или помолете администратора да ви добави.",
   "login.error": "Входът не успя. Опитайте отново; ако продължава, обърнете се към администратора.",
   "login.synthetic": "Само синтетични тестови потребители. В продукционна среда този начин на вход е забранен.",
   "chat.companyDocuments": "Фирмени документи",

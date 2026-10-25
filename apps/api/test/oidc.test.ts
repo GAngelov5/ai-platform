@@ -105,8 +105,9 @@ let deps: PlatformDeps;
 
 class Browser {
   cookies = new Map<string, string>();
+  constructor(private readonly origin?: string) {}
   async get(path: string) {
-    const res = await fetch(base + path, { redirect: "manual", headers: { cookie: [...this.cookies].map(([k, v]) => `${k}=${v}`).join("; ") } });
+    const res = await fetch((this.origin ?? base) + path, { redirect: "manual", headers: { cookie: [...this.cookies].map(([k, v]) => `${k}=${v}`).join("; ") } });
     for (const c of res.headers.getSetCookie()) {
       const [kv] = c.split(";");
       const i = kv!.indexOf("=");
@@ -216,6 +217,38 @@ describe("company sign-in (OIDC)", () => {
     expect((await new Browser().signIn(alice, { forge: true })).location).toBe("/?login=error");
     expect((await new Browser().signIn(alice, { nonceOverride: "someone-elses-nonce" })).location).toBe("/?login=error");
     expect((await new Browser().get("/api/auth/oidc/callback?state=made-up&code=x")).location).toBe("/?login=error");
+  });
+
+  it("refuses people outside the allowed domain, with its own message", async () => {
+    const idp2 = await new FakeIdp().start();
+    const config = loadPlatformConfig({
+      APP_ENV: "test", LOG_LEVEL: "fatal", AUTH_MODE: "oidc",
+      OIDC_ISSUER: idp2.issuer, OIDC_CLIENT_ID: CLIENT.id, OIDC_CLIENT_SECRET: CLIENT.secret,
+      OIDC_ALLOWED_DOMAINS: "company.test", OIDC_DEFAULT_GROUPS: "all-staff",
+      PUBLIC_ORIGIN: "https://brain.example.test",
+    });
+    const deps2 = await buildDeps({ config, db, logger: createLogger("fatal"), pingDatabase: async () => {}, model: new FakeModelGateway() });
+    const app2 = await createApiApp(deps2);
+    await app2.listen(0, "127.0.0.1");
+    const base2 = (await app2.getUrl()).replace("[::1]", "127.0.0.1");
+    try {
+      const signIn = async (claims: Record<string, unknown>) => {
+        const b = new Browser(base2);
+        const start = await b.get("/api/auth/oidc/login");
+        const { code, state } = idp2.consent(start.location!, claims);
+        return { b, r: await b.get(`/api/auth/oidc/callback?code=${code}&state=${state}`) };
+      };
+      const outsider = await signIn({ sub: "sub-outsider", name: "Olly", email: "olly@elsewhere.test", email_verified: true });
+      expect(outsider.r.location).toBe("/?login=not_allowed");
+      expect(await createRepositories(db).principals.get("cust_demo", principalIdFor("sub-outsider"))).toBeFalsy();
+      const insider = await signIn({ sub: "sub-insider", name: "Ina", email: "ina@company.test", email_verified: true });
+      expect(insider.r.location).toBe("/chat");
+      expect((await createRepositories(db).principals.get("cust_demo", principalIdFor("sub-insider")))?.groups).toEqual(["all-staff"]);
+    } finally {
+      await app2.close();
+      await deps2.connectors.closeAll();
+      idp2.close();
+    }
   });
 
   it("reports a cancelled sign-in, refuses disabled users, and keeps development sign-in off", async () => {
