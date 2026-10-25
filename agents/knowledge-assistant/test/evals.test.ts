@@ -58,7 +58,7 @@ async function world() {
     principals: { get: async (_c, id) => principals.get(id) },
     ledger: { record: async (rows) => rows.forEach((r) => ledger.set(r.evidenceId, r)), get: async (_c, id) => ledger.get(id) },
     adapter: new FixtureKnowledgeAdapter(corpus),
-    policySourceIds: knowledgeAssistant.knowledgeScopes.sourceIds,
+    policySourceIds: ["atlas-project-docs", "company-handbook", "team-share"],
   });
   const capabilities = new CapabilityRegistry();
   const connector = async (id: string, url: string, token: string) =>

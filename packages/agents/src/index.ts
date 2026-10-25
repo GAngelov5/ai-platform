@@ -126,7 +126,12 @@ export const AgentDefinitionSchema = z.strictObject({
   instructions: z.string().min(1).max(8000),
   /** Capability ids. Unknown ids are simply unavailable at runtime (fail closed). */
   capabilities: z.array(CapabilityIdSchema).min(1),
-  knowledgeScopes: z.strictObject({ sourceIds: z.array(IdSchema).min(1) }),
+  /**
+   * Which document sources the agent searches: a fixed list, or allSources for every source this
+   * deployment configures (the core Knowledge Assistant: a customer's own source ids differ).
+   * Either way the knowledge service still checks each document against the asker's groups.
+   */
+  knowledgeScopes: z.union([z.strictObject({ sourceIds: z.array(IdSchema).min(1) }), z.strictObject({ allSources: z.literal(true) })]),
   outputSchema: z.literal("cited-answer@1"),
   limits: z.strictObject({
     maxToolCalls: z.number().int().min(1).max(10),

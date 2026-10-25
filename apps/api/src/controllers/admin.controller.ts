@@ -156,7 +156,7 @@ export class AdminController {
       name: a.name,
       description: a.description,
       capabilities: [...a.capabilities],
-      sourceIds: [...a.knowledgeScopes.sourceIds],
+      sourceIds: "sourceIds" in a.knowledgeScopes ? [...a.knowledgeScopes.sourceIds] : ["all configured sources"],
       limits: a.limits,
     }));
   }

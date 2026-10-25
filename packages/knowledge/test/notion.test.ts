@@ -223,5 +223,6 @@ describe("version display", () => {
     expect(displayVersion("2026-10-25T15:40:00.000Z|md3")).toBe("2026-10-25 15:40 UTC");
     expect(displayVersion("2026-04-30")).toBe("2026-04-30");
     expect(displayVersion("v2")).toBe("v2");
+    expect(displayVersion("1792664788000-334")).toBe("file of 2026-10-22");
   });
 });

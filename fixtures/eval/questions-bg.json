@@ -1,0 +1,49 @@
+{
+  "$comment": "Bulgarian questions over the Bulgarian fixture documents (fixtures/documents). supportingDocumentIds are full platform document IDs.",
+  "questions": [
+    {
+      "id": "bg01",
+      "principal": "alice",
+      "type": "answerable",
+      "category": "bulgarian",
+      "language": "bg",
+      "question": "Какъв е основният блокер на проекта Атлас?",
+      "supportingDocumentIds": ["atlas-status-bg"],
+      "supporting": [],
+      "expectText": "Northwind"
+    },
+    {
+      "id": "bg02",
+      "principal": "bob",
+      "type": "answerable",
+      "category": "bulgarian",
+      "language": "bg",
+      "question": "Колко дни платен годишен отпуск има служител на пълен работен ден?",
+      "supportingDocumentIds": ["handbook-otpuski-bg"],
+      "supporting": [],
+      "expectText": "20"
+    },
+    {
+      "id": "bg03",
+      "principal": "bob",
+      "type": "answerable",
+      "category": "bulgarian",
+      "language": "bg",
+      "question": "До кога трябва да се използват прехвърлените дни отпуск?",
+      "supportingDocumentIds": ["handbook-otpuski-bg"],
+      "supporting": [],
+      "expectText": "31 март"
+    },
+    {
+      "id": "bg04",
+      "principal": "bob",
+      "type": "permission",
+      "category": "bulgarian",
+      "language": "bg",
+      "question": "Защо се забави проектът Атлас?",
+      "supportingDocumentIds": [],
+      "supporting": [],
+      "forbiddenDocumentIds": ["atlas-status-bg", "atlas-status-2026-04", "atlas-steering-2026-05-12", "atlas-charter", "atlas-contract-dispute"]
+    }
+  ]
+}

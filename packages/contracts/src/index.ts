@@ -335,5 +335,9 @@ export const SESSION_COOKIE = "platform_session";
 export function displayVersion(version: string): string {
   const v = version.replace(/\|[A-Za-z0-9._-]+$/, "");
   const iso = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?Z$/.exec(v);
-  return iso ? `${iso[1]} ${iso[2]} UTC` : v;
+  if (iso) return `${iso[1]} ${iso[2]} UTC`;
+  // File shares: "<modified time in ms>-<size>" (change detection only); show when the file was last changed.
+  const file = /^(\d{12,14})-\d+$/.exec(v);
+  if (file) return `file of ${new Date(Number(file[1])).toISOString().slice(0, 10)}`;
+  return v;
 }

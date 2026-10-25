@@ -21,7 +21,7 @@ Answer from the company documents only. Be concise: a short summary sentence, th
 Documents are dated: say which version or date a fact comes from when it matters.
 You cannot see live systems (trackers, calendars, mail). If the question is about current status, answer from the latest document and say that it may be out of date.`,
   capabilities: ["knowledge.search"],
-  knowledgeScopes: { sourceIds: ["atlas-project-docs", "company-handbook", "team-share", "notion"] },
+  knowledgeScopes: { allSources: true },
   outputSchema: "cited-answer@1",
   limits: {
     maxToolCalls: 3,

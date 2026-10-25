@@ -105,6 +105,15 @@ const run = (h: ReturnType<typeof harness>, question: string, groups = ["atlas-t
   h.runtime.run(ctx, { agent: defineAgent(agentDef), question, principalGroups: groups });
 
 describe("AgentRuntime (context router)", () => {
+  it("an agent scoped to all sources searches every source the policy allows; a listed scope stays as listed", async () => {
+    const all = harness([ev("a", "The Atlas launch was delayed by vendor certification.")]);
+    await all.runtime.run(ctx, { agent: defineAgent({ ...agentDef, knowledgeScopes: { allSources: true } }), question: "Why was the Atlas launch delayed?", principalGroups: ["atlas-team"] });
+    expect(all.searches[0]).toMatchObject({ sourceIds: undefined });
+    const listed = harness([ev("a", "The Atlas launch was delayed by vendor certification.")]);
+    await run(listed, "Why was the Atlas launch delayed?");
+    expect(listed.searches[0]).toMatchObject({ sourceIds: ["s1"] });
+  });
+
   it("answers from documents with run-issued citations and the server-side scope", async () => {
     const h = harness([ev("a", "The Atlas launch was delayed by vendor certification.")]);
     const r = await run(h, "Why was the Atlas launch delayed?");
