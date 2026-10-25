@@ -275,6 +275,21 @@ Needs your own Google OAuth client and Notion integration: follow
 | 13.10 | Dana | **Disconnect** Notion, wait about a minute | Admin → Sources: the Notion pages are gone from the index; the same question no longer cites them. |
 | 13.11 | — | Docker only: `docker logs $(docker ps -qf name=egress-proxy)` | `egress` lines only for `oauth2.googleapis.com`, `www.googleapis.com` and `api.notion.com`. |
 
+## 14. Company sign-in (OIDC)
+
+Setup: [SIGN-IN.md](SIGN-IN.md), "Try it locally with Keycloak". Users and test
+passwords: [fixtures/keycloak/README.md](../fixtures/keycloak/README.md).
+
+| # | User | Do | Expect |
+|---|---|---|---|
+| 14.1 | — | Open the app with `AUTH_MODE=oidc` | The sign-in page shows **Sign in with your company account**, and no list of test users. |
+| 14.2 | alice | Click it, sign in at Keycloak | Back on Assistants as "Alice Atlas". Ask "Why was Project Atlas delayed?": a cited answer. |
+| 14.3 | bob | Same question | Not enough evidence: Bob's directory group (Staff) maps only to all-staff. |
+| 14.4 | dana | Sign in | The **Admin** link appears (directory group Platform Admins). |
+| 14.5 | — | In the Keycloak admin console (http://localhost:8180/admin), remove alice from "Atlas Team", then sign out and in again as alice | The Atlas question is now refused: groups refresh at every sign-in. Put her back afterwards. |
+| 14.6 | — | At Keycloak, click **Cancel** (or close the tab and reopen the sign-in link later) | "Sign-in was cancelled." or "Sign-in didn't work", and no session. |
+| 14.7 | dana | **Admin → Audit**, filter `auth.` | `auth.oidc_login` rows with the mapped groups and roles. |
+
 ## What you can't test yet (and why)
 
 | Area | Blocked on |
@@ -282,4 +297,4 @@ Needs your own Google OAuth client and Notion integration: follow
 | Microsoft 365 mail, calendar and SharePoint (Stage 2) | A test tenant and an Entra app registration |
 | Citation support ≥ 95% and model-level abstention (Stage 3b) | Real model answers for 56 questions; 2–6 min each on CPU, so this waits for the GPU or model decision |
 | OCR for scans | Decision: Tesseract or docling in a parser container, or the RAG backend's parser |
-| OIDC sign-in, backups and restore, upgrade drills (Stage 4) | Production hardening stage |
+| Backups and restore, upgrade drills (Stage 4) | Production hardening stage |

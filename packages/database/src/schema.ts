@@ -32,6 +32,10 @@ export const principals = pgTable(
     roles: jsonb("roles").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     /** "fixture" principals may only authenticate through development auth. */
     origin: text("origin").$type<"fixture" | "oidc">().notNull(),
+    /** From the identity provider (OIDC); used to match accounts such as a Workspace calendar. */
+    email: text("email"),
+    /** Last successful sign-in (OIDC). */
+    lastLoginAt: ts("last_login_at"),
     disabled: boolean("disabled").notNull().default(false),
     createdAt: ts("created_at").notNull().defaultNow(),
   },

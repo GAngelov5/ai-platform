@@ -14,10 +14,6 @@ async function main() {
     throw err;
   }
   const logger = createLogger(config.logLevel);
-  if (config.auth.mode === "oidc") {
-    logger.fatal("AUTH_MODE=oidc is not implemented in this milestone (Phase 7: customer IdP integration). Refusing to start.");
-    process.exit(78);
-  }
 
   const handle = connectDatabase(config.databaseUrl!);
   await waitFor("postgres", handle.ping, 30, 2000, (i, err) =>

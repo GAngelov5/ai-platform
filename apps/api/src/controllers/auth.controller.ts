@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Inject, NotFoundException, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
+import { randomBytes } from "node:crypto";
 import { CSRF_COOKIE, DevLoginRequestSchema, SESSION_COOKIE, type DevPrincipal, type MeResponse } from "@platform/contracts";
 import { hashToken, newOpaqueToken } from "@platform/security";
 import type { CookieOptions, Response } from "express";
@@ -6,6 +7,9 @@ import { Public } from "../auth/decorators.js";
 import type { PlatformRequest } from "../auth/http.js";
 import type { PlatformDeps } from "../deps.js";
 import { DEPS } from "../tokens.js";
+
+const LOGIN_COOKIE = "platform_login_nonce";
+const LOGIN_TTL_MS = 10 * 60_000;
 
 @Controller("auth")
 export class AuthController {
@@ -62,6 +66,82 @@ export class AuthController {
     res.cookie(SESSION_COOKIE, token, { ...this.cookieBase(), httpOnly: true, maxAge: ttlMs });
     await repos.audit.write({ customerId: config.customerId, principalId: p.id, requestId: req.requestId, action: "auth.dev_login", outcome: "allowed" });
     return { principalId: p.id, displayName: p.displayName, customerId: p.customerId, authMode: "dev", roles: [...p.roles] };
+  }
+
+  /**
+   * Company sign-in, step 1: send the browser to the identity provider. The
+   * pending login is kept server-side (single-use state, PKCE verifier) and
+   * bound to this browser by a nonce cookie, whose hash is also the OIDC nonce
+   * the ID token must carry.
+   */
+  @Public()
+  @Get("oidc/login")
+  async oidcLogin(@Res() res: Response) {
+    const oidc = this.deps.oidc;
+    if (!oidc) throw new NotFoundException();
+    const browserNonce = randomBytes(32).toString("base64url");
+    const nonce = hashToken(browserNonce);
+    const { url, state, codeVerifier } = await oidc.start(nonce);
+    await this.deps.repos.oauthStates.create({
+      state,
+      customerId: this.deps.config.customerId,
+      principalId: "@login",
+      provider: "oidc-login",
+      browserNonceHash: nonce,
+      codeVerifier,
+      expiresAt: new Date(Date.now() + LOGIN_TTL_MS),
+    });
+    res.cookie(LOGIN_COOKIE, browserNonce, { secure: this.deps.config.api.cookieSecure, sameSite: "lax", httpOnly: true, path: "/api/auth/oidc/callback", maxAge: LOGIN_TTL_MS });
+    res.redirect(302, url);
+  }
+
+  /** Company sign-in, step 2: the provider sends the browser back here with a code. */
+  @Public()
+  @Get("oidc/callback")
+  async oidcCallback(@Req() req: PlatformRequest, @Res() res: Response) {
+    const { config, repos, oidc } = this.deps;
+    if (!oidc) throw new NotFoundException();
+    const query = new URLSearchParams(req.url.split("?")[1] ?? "");
+    const fail = async (reason: string) => {
+      await repos.audit.write({ customerId: config.customerId, requestId: req.requestId, action: "auth.oidc_login", outcome: "denied", detail: { reason } }).catch(() => {});
+      res.clearCookie(LOGIN_COOKIE, { path: "/api/auth/oidc/callback" });
+      res.redirect(302, `/?login=${reason === "cancelled" ? "cancelled" : "error"}`);
+    };
+    const state = query.get("state");
+    if (!state || state.length > 200) return fail("no_state");
+    // Single use: consumed before anything else, whatever happens next.
+    const pending = await repos.oauthStates.take(state);
+    const browserNonce = req.cookies[LOGIN_COOKIE];
+    if (!pending || pending.provider !== "oidc-login" || typeof browserNonce !== "string" || hashToken(browserNonce) !== pending.browserNonceHash) return fail("state_mismatch");
+    if (query.get("error")) return fail(query.get("error") === "access_denied" ? "cancelled" : "provider_error");
+    let identity;
+    try {
+      identity = await oidc.finish(query, { state, nonce: pending.browserNonceHash, codeVerifier: pending.codeVerifier });
+    } catch (err) {
+      this.deps.logger.warn({ requestId: req.requestId, err: (err as Error).message }, "oidc sign-in rejected");
+      return fail("token_rejected");
+    }
+    let principal;
+    try {
+      principal = await repos.principals.upsertFromIdentityProvider({ customerId: config.customerId, id: identity.principalId, displayName: identity.displayName, email: identity.email, groups: identity.groups, roles: identity.roles });
+    } catch {
+      return fail("principal_conflict");
+    }
+    if (principal.disabled) return fail("disabled");
+    const token = newOpaqueToken();
+    const ttlMs = config.api.sessionTtlMinutes * 60_000;
+    await repos.sessions.create({ tokenHash: hashToken(token), customerId: config.customerId, principalId: principal.id, authMode: "oidc", expiresAt: new Date(Date.now() + ttlMs) });
+    await repos.audit.write({
+      customerId: config.customerId,
+      principalId: principal.id,
+      requestId: req.requestId,
+      action: "auth.oidc_login",
+      outcome: "allowed",
+      detail: { groups: identity.groups, roles: identity.roles, unmappedGroups: identity.directoryGroups.length - identity.groups.length },
+    });
+    res.clearCookie(LOGIN_COOKIE, { path: "/api/auth/oidc/callback" });
+    res.cookie(SESSION_COOKIE, token, { ...this.cookieBase(), httpOnly: true, maxAge: ttlMs });
+    res.redirect(302, "/chat");
   }
 
   @Post("logout")

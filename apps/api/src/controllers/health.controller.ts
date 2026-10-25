@@ -49,6 +49,6 @@ export class HealthController {
   @Get("config/public")
   publicConfig(): PublicConfig {
     const c = this.deps.config;
-    return { brandName: c.brandName, environment: c.env, knowledgeProvider: c.knowledge.provider, modelProvider: this.deps.model.descriptor.provider, modelMode: c.model.mode };
+    return { brandName: c.brandName, environment: c.env, knowledgeProvider: c.knowledge.provider, modelProvider: this.deps.model.descriptor.provider, modelMode: c.model.mode, authMode: c.auth.mode };
   }
 }

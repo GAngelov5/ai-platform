@@ -199,6 +199,20 @@ GPU host, or Ollama natively on the Mac (Metal) as an approved local endpoint
 - For production Bulgarian content, use a multilingual embedding model
   (e.g. `bge-m3`) and evaluate the chat model in Bulgarian first.
 
+## Company sign-in (ADR 0016)
+
+- `AUTH_MODE=oidc` signs people in through the company's identity provider
+  (Entra ID, Google Workspace, Okta, Keycloak). Directory groups map to
+  platform groups, so permissions follow the directory.
+- Try it locally with the Keycloak test realm:
+  [docs/SIGN-IN.md](docs/SIGN-IN.md).
+
+## Answer evaluation
+
+`node --env-file=.env scripts/eval-answers.mjs` asks 60 synthetic questions
+through the app with the configured model and judges every cited sentence.
+Results go to `docs/eval/<date>-answers-<label>.md`.
+
 ## Google Calendar and Notion (ADR 0015)
 
 - **Google Calendar:** each user connects their own account under Your

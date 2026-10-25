@@ -16,6 +16,8 @@ Last updated: 2026-10-23
 | UI · Forest design | Workspace with context panel, Inbox, account menu, Your connections | commit 51c3d73 · design canvas |
 | 3a · Source ingestion | `SourceAdapter` contract, generic pipeline, folder adapter with inherited ACLs, quarantine, content store, partitions per access set, scheduled ingest → sync | ADR 0009 · 98 tests · `scripts/lightrag-live-check.mjs` (23/23, 2026-10-22) |
 | 3b · Knowledge selection gate *(retrieval part)* | PDF/DOCX parsing in an isolated worker thread, 110-file synthetic corpus, 34 labeled questions, HTTP eval harness (base + hard sets), platform-side version handling, optional semantic evidence score | ADR 0010 · `docs/eval/` (lexical + LightRAG) · 113 tests |
+| Company sign-in (OIDC) | Authorization code + PKCE via openid-client, ID-token signature always verified, single-use browser-bound login, users created and refreshed from the directory, directory groups → platform groups, admin role from a group; local Keycloak test realm | ADR 0016 · [SIGN-IN.md](SIGN-IN.md) · 233 tests · live sign-in through Keycloak |
+| Answer-level evaluation | 60 questions (incl. Bulgarian) through the app with a real model; citations judged sentence by sentence by a second model; refusals, leaks, language, latency | `scripts/eval-answers.mjs` · `docs/eval/*-answers-*` |
 | Google Calendar and Notion | A **Connect** button per integration: personal Google Calendar (OAuth + PKCE, read-only, tokens sealed, revocable) backing the meeting assistant; Notion connected by an admin through Notion's own sign-in and page picker, indexed as a source; allowlisting egress proxy for SaaS APIs | ADR 0015 · 214 tests · [setup guide](INTEGRATIONS-SETUP.md) |
 | Licence and core assistant | Signed licence file (Ed25519, verified offline), core Knowledge Assistant always available, add-on agents and workflow kinds enforced on every request and run, 14-day grace, admin licence panel and expiry warnings | ADR 0014 · 176 tests |
 | Bulgarian language | Cyrillic-aware search (tokenizer, light Bulgarian stemmer, stopwords), collision-free IDs for Cyrillic file names, answers and platform messages in the question's language, EN/БГ UI switch across all pages, localized agent names | ADR 0013 · 154 tests |
@@ -36,9 +38,9 @@ Last updated: 2026-10-23
      platform then no longer refuses off-topic questions; the model must.
      Next: try a cross-encoder re-ranker, and decide the default after the
      answer-level gate (ADR 0010, Decision 4).
-   - **Answer-level gate:** citation support ≥ 95% and model-level abstention.
-     This needs real model answers, and waits for the model and hardware
-     decision below.
+   - **Answer-level gate:** now measured with Gemini (see Notes). Refusals,
+     leaks and Bulgarian pass; citation support and the answer rate on
+     paraphrased questions don't yet.
    - OCR for scans.
 3. **Stage 4 · Production hardening:** OIDC, secrets manager, image slimming
    and scanning, egress tests in CI, backup and restore drills,
@@ -48,6 +50,34 @@ Last updated: 2026-10-23
    configuration, supervised pilot.
 
 ## Notes from the last stage (to check)
+
+**Answer-level evaluation (Gemini 3.5 Flash-Lite, judged by Gemini 3.7 Flash, 60 synthetic questions)**
+- **Pass:** unanswerable questions refused 100%, leaks 0, every answer cites a
+  supporting document, Bulgarian questions answered in Bulgarian 100%, about
+  2 s per answer. Every base category (status, decisions, specs, conflicting
+  versions, policies, restricted, multi-document, permissions) behaves as
+  expected.
+- **Fail: citation support 90–91%** (target 95%). Most unsupported sentences
+  mention a superseded plan's date but cite the current plan. A prompt rule
+  against that changed nothing with Flash-Lite. Next: run the same eval with a
+  stronger model (`MODEL_NAME=gemini-3.7-flash`), to tell model size from
+  platform.
+- **Fail: answer rate 76–78%** (target 90%). 11 of 13 paraphrased questions are
+  refused because word-matching search doesn't find paraphrases (the known
+  retrieval gap). Next: semantic scoring or LightRAG for these, then re-run.
+- **Fixed on the way:**
+  - The core Knowledge Assistant searched only a fixed source list, so a
+    customer's own sources would never have been searched. It now searches all
+    configured sources (`allSources`).
+  - File-share versions showed as raw "mtime-size" strings; they now read
+    "file of 2026-10-22".
+  - Gemini's citation formats were normalized (earlier commit).
+
+**Company sign-in (OIDC)**
+- Signed in live through Keycloak as Alice: groups mapped, Atlas answer cited.
+- **Found by a test:** a forged ID token was accepted, because `openid-client`
+  trusts the token endpoint over TLS by default. Signature checks are now always
+  on (ADR 0016).
 
 **Google Calendar and Notion**
 - **Not yet tried against the real services.** Everything is tested against

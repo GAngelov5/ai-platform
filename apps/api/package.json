@@ -32,20 +32,22 @@
     "@platform/database": "workspace:*",
     "@platform/knowledge": "workspace:*",
     "@platform/security": "workspace:*",
+    "@platform/workflows": "workspace:*",
+    "openid-client": "^6.8.8",
     "pino": "^10.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.0",
-    "zod": "^4.6.0",
-    "@platform/workflows": "workspace:*"
+    "zod": "^4.6.0"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.0",
+    "@platform/mcp-atlas-tracker": "workspace:*",
+    "@platform/worker": "workspace:*",
     "@types/express": "^5.0.0",
     "@types/node": "^24",
+    "jose": "^6.2.12",
     "tsx": "^4.20.0",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.3",
-    "@platform/worker": "workspace:*",
-    "@platform/mcp-atlas-tracker": "workspace:*"
+    "vitest": "^5.0.3"
   }
 }

@@ -50,6 +50,13 @@
       "when": 1792834703356,
       "tag": "0006_connection_connected_by",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792948563460,
+      "tag": "0007_principal_email",
+      "breakpoints": true
     }
   ]
 }

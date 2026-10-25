@@ -198,6 +198,8 @@ export const PublicConfigSchema = z.strictObject({
   modelProvider: z.string(),
   /** "hybrid": answers come from an approved external model service (questions leave the deployment). */
   modelMode: z.enum(["local", "hybrid"]).optional(),
+  /** "oidc": sign in with the company identity provider; "dev": synthetic test users. */
+  authMode: z.enum(["dev", "oidc"]).optional(),
 });
 export type PublicConfig = z.infer<typeof PublicConfigSchema>;
 

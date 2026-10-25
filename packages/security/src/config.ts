@@ -29,6 +29,13 @@ const EnvSchema = z.object({
   OIDC_ISSUER: z.string().url().optional(),
   OIDC_CLIENT_ID: z.string().optional(),
   OIDC_CLIENT_SECRET: z.string().optional(),
+  /** ID-token claim holding the user's directory groups (Keycloak "groups", Entra "groups", Okta "groups"). */
+  OIDC_GROUPS_CLAIM: z.string().min(1).default("groups"),
+  /** JSON: directory group -> platform group. Unmapped groups give no access (fail closed). */
+  OIDC_GROUP_MAP: z.string().optional(),
+  /** Directory groups whose members get the admin role (comma-separated). */
+  OIDC_ADMIN_GROUPS: z.string().default(""),
+  OIDC_SCOPES: z.string().default("openid email profile"),
 
   KNOWLEDGE_PROVIDER: z.enum(["fixture", "ragflow", "lightrag"]).default("fixture"),
   FIXTURES_DIR: z.string().optional(),
@@ -95,7 +102,18 @@ export interface PlatformConfig {
   api: { port: number; publicOrigin: string; cookieSecure: boolean; sessionTtlMinutes: number };
   auth:
     | { mode: "dev"; devAuthEnabled: boolean }
-    | { mode: "oidc"; devAuthEnabled: false; issuer: string; clientId: string; clientSecret: string };
+    | {
+        mode: "oidc";
+        devAuthEnabled: false;
+        issuer: string;
+        clientId: string;
+        clientSecret: string;
+        redirectUri: string;
+        scopes: string;
+        groupsClaim: string;
+        groupMap: Record<string, string>;
+        adminGroups: string[];
+      };
   knowledge:
     | { provider: "fixture"; fixturesDir?: string }
     | { provider: "ragflow"; baseUrl: string; apiKey: string; datasetId: string; timeoutMs: number }
@@ -175,6 +193,7 @@ export function loadPlatformConfig(
     if (!e.OIDC_ISSUER) problems.push("OIDC_ISSUER is required when AUTH_MODE=oidc");
     if (!e.OIDC_CLIENT_ID) problems.push("OIDC_CLIENT_ID is required when AUTH_MODE=oidc");
     if (!e.OIDC_CLIENT_SECRET) problems.push("OIDC_CLIENT_SECRET is required when AUTH_MODE=oidc");
+    if (e.OIDC_ISSUER && prod && new URL(e.OIDC_ISSUER).protocol !== "https:") problems.push("production requires an https OIDC_ISSUER");
   }
 
   // --- Transport / secrets ----------------------------------------------------
@@ -269,6 +288,13 @@ export function loadPlatformConfig(
     }
   }
 
+  let oidcGroupMap: Record<string, string> = {};
+  if (e.OIDC_GROUP_MAP) {
+    const m = z.record(z.string().min(1), z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/)).safeParse(safeJson(e.OIDC_GROUP_MAP));
+    if (!m.success) problems.push("OIDC_GROUP_MAP must be a JSON object of directory group -> platform group");
+    else oidcGroupMap = m.data;
+  }
+
   if (problems.length) throw new ConfigurationError(problems);
 
   return {
@@ -288,7 +314,18 @@ export function loadPlatformConfig(
     },
     auth:
       e.AUTH_MODE === "oidc"
-        ? { mode: "oidc", devAuthEnabled: false, issuer: e.OIDC_ISSUER!, clientId: e.OIDC_CLIENT_ID!, clientSecret: e.OIDC_CLIENT_SECRET! }
+        ? {
+            mode: "oidc",
+            devAuthEnabled: false,
+            issuer: e.OIDC_ISSUER!,
+            clientId: e.OIDC_CLIENT_ID!,
+            clientSecret: e.OIDC_CLIENT_SECRET!,
+            redirectUri: `${new URL(e.PUBLIC_ORIGIN).origin}/api/auth/oidc/callback`,
+            scopes: e.OIDC_SCOPES,
+            groupsClaim: e.OIDC_GROUPS_CLAIM,
+            groupMap: oidcGroupMap,
+            adminGroups: e.OIDC_ADMIN_GROUPS.split(",").map((g) => g.trim()).filter(Boolean),
+          }
         : { mode: "dev", devAuthEnabled: e.DEV_AUTH_ENABLED },
     knowledge:
       e.KNOWLEDGE_PROVIDER === "ragflow"

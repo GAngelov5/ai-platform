@@ -30,6 +30,7 @@ import { loadEntitlements, mcpTokenVar, SecretSealer, type Entitlements, type Pl
 import { WorkflowService } from "@platform/workflows";
 import { fileURLToPath } from "node:url";
 import type { Logger } from "./logger.js";
+import { OidcLogin } from "./auth/oidc.js";
 
 export const DEFAULT_FIXTURES_ROOT = fileURLToPath(new URL("../../../fixtures", import.meta.url));
 /** The development licence: the default outside production (ADR 0014). */
@@ -61,6 +62,8 @@ export interface PlatformDeps {
   admin: AdminQueries;
   /** "Connect" integrations (ADR 0015): the configured providers and the sealed token store. */
   connections: { providers: OAuthProvider[]; store?: PersonalConnectionStore };
+  /** Company sign-in (AUTH_MODE=oidc); undefined in development sign-in mode. */
+  oidc?: OidcLogin;
 }
 
 /** Chunks of exactly the catalogued version, from the platform content store (ADR 0009). */
@@ -129,6 +132,8 @@ export async function buildDeps(input: {
   /** Tests only: local fakes of Google's and Notion's endpoints. */
   googleEndpoints?: GoogleEndpoints;
   notionEndpoints?: NotionOAuthEndpoints;
+  /** Tests only: a local fake identity provider. */
+  oidcFetch?: typeof fetch;
 }): Promise<PlatformDeps> {
   const { config, db, logger } = input;
   const repos = createRepositories(db);
@@ -168,6 +173,11 @@ export async function buildDeps(input: {
       ? { customerId: config.customerId, ...g, encryptionKey: config.integrations.connectionEncryptionKey!, rows: repos.connections, endpoints: input.googleEndpoints }
       : undefined,
   });
+  const a = config.auth;
+  const oidc =
+    a.mode === "oidc"
+      ? new OidcLogin(a, { fetch: input.oidcFetch, allowHttp: config.env !== "production" && new URL(a.issuer).protocol === "http:" })
+      : undefined;
   const key = config.integrations.connectionEncryptionKey;
   const providers: OAuthProvider[] = [];
   if (google) providers.push(new GoogleCalendarProvider(google.oauth));
@@ -184,5 +194,5 @@ export async function buildDeps(input: {
   });
   // The API creates and lists workflows; the worker dispatches and executes them.
   const workflows = new WorkflowService({ db, capabilities, actions, principals: repos.principals, audit: repos.audit, policyVersion: config.policyVersion, entitlements });
-  return { config, repos, knowledge, agents, entitlements, runtime, model, logger, pingDatabase: input.pingDatabase, actions, capabilities, connectors, workflows, admin: createAdminQueries(db), connections };
+  return { config, repos, knowledge, agents, entitlements, runtime, model, logger, pingDatabase: input.pingDatabase, actions, capabilities, connectors, workflows, admin: createAdminQueries(db), connections, oidc };
 }

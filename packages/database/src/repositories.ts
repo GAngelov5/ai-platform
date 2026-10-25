@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNull, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
 import type { Database } from "./client.js";
 import {
   agentRuns,
@@ -55,6 +55,7 @@ export interface PrincipalRecord {
   groups: string[];
   roles: string[];
   origin: "fixture" | "oidc";
+  email?: string;
   disabled: boolean;
 }
 
@@ -108,6 +109,7 @@ const toPrincipal = (r: typeof principals.$inferSelect): PrincipalRecord => ({
   groups: r.groups,
   roles: r.roles,
   origin: r.origin,
+  email: r.email ?? undefined,
   disabled: r.disabled,
 });
 
@@ -142,6 +144,31 @@ export function createRepositories(db: Database) {
           .where(and(eq(principals.customerId, customerId), eq(principals.origin, origin)))
           .orderBy(asc(principals.id));
         return rows.map(toPrincipal);
+      },
+      /**
+       * Just-in-time provisioning from an OIDC sign-in: creates the principal, or refreshes its name,
+       * email, groups and roles from the identity provider. Never touches synthetic fixture principals,
+       * and never re-enables a principal that was disabled.
+       */
+      async upsertFromIdentityProvider(input: { customerId: string; id: string; displayName: string; email?: string; groups: string[]; roles: string[] }): Promise<PrincipalRecord> {
+        const now = new Date();
+        const [row] = await db
+          .insert(principals)
+          .values({ ...input, email: input.email ?? null, origin: "oidc", lastLoginAt: now })
+          .onConflictDoUpdate({
+            target: [principals.customerId, principals.id],
+            set: { displayName: input.displayName, email: input.email ?? null, groups: input.groups, roles: input.roles, lastLoginAt: now },
+            setWhere: sql`${principals.origin} = 'oidc'`,
+          })
+          .returning();
+        if (!row) throw new Error("principal id is taken by a non-OIDC principal");
+        return toPrincipal(row);
+      },
+      async setDisabled(customerId: string, principalId: string, disabled: boolean): Promise<void> {
+        await db
+          .update(principals)
+          .set({ disabled })
+          .where(and(eq(principals.customerId, customerId), eq(principals.id, principalId)));
       },
       async setRoles(customerId: string, principalId: string, roles: string[]): Promise<void> {
         await db

@@ -14,10 +14,20 @@ export default function Home() {
   const [principals, setPrincipals] = useState<DevPrincipal[] | null>(null);
   const [error, setError] = useState<string>();
 
+  const company = config?.authMode === "oidc";
+  const [loginResult, setLoginResult] = useState<string | null>(null);
   useEffect(() => {
     if (me) window.location.replace("/chat");
-    if (me === null) void api<DevPrincipal[]>("/api/auth/dev-principals").then(setPrincipals, () => setPrincipals([]));
-  }, [me]);
+    // Company sign-in has no user list; development sign-in lists the synthetic users.
+    if (me === null && config && !company) void api<DevPrincipal[]>("/api/auth/dev-principals").then(setPrincipals, () => setPrincipals([]));
+  }, [me, config, company]);
+  useEffect(() => {
+    const r = new URLSearchParams(window.location.search).get("login");
+    if (r) {
+      setLoginResult(r);
+      window.history.replaceState(null, "", "/");
+    }
+  }, []);
 
   return (
     <>
@@ -29,7 +39,21 @@ export default function Home() {
             <h1 id="signin" className="text-[26px] font-bold tracking-tight">
               {t("login.title")}
             </h1>
-            {principals === null && <p className="mt-2 text-muted">{t("common.loading")}</p>}
+            {loginResult && (
+              <p role="status" className="mt-3 rounded-xl bg-warn-bg px-3.5 py-2.5 text-sm text-warn-ink">
+                {loginResult === "cancelled" ? t("login.cancelled") : t("login.error")}
+              </p>
+            )}
+            {company && (
+              <div className="mt-6 max-w-[520px] rounded-[16px] border border-line bg-surface p-6">
+                <p className="text-[14.5px] text-ink-2">{t("login.companyText")}</p>
+                {/* A full-page navigation: the identity provider's page can't be fetched. */}
+                <a href="/api/auth/oidc/login" className="mt-4 inline-flex min-h-11 items-center rounded-full bg-brand px-5 font-semibold text-on-brand no-underline hover:bg-brand-hover">
+                  {t("login.company")}
+                </a>
+              </div>
+            )}
+            {!company && principals === null && <p className="mt-2 text-muted">{t("common.loading")}</p>}
             {principals?.length === 0 && <p className="mt-2 text-muted">{t("login.disabled")}</p>}
             {principals && principals.length > 0 && (
               <>
