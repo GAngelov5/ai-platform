@@ -323,3 +323,15 @@ export type RunEvent = z.infer<typeof RunEventSchema>;
 export const CSRF_HEADER = "x-csrf-token";
 export const CSRF_COOKIE = "platform_csrf";
 export const SESSION_COOKIE = "platform_session";
+
+/**
+ * A version as people read it. Sources may add a technical suffix for change
+ * detection (Notion: "2026-10-25T15:40:00.000Z|md3"); an ISO timestamp is
+ * shown as a minute-precision UTC time. Other versions ("2026-04", "v2") are
+ * shown as they are.
+ */
+export function displayVersion(version: string): string {
+  const v = version.replace(/\|[A-Za-z0-9._-]+$/, "");
+  const iso = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?Z$/.exec(v);
+  return iso ? `${iso[1]} ${iso[2]} UTC` : v;
+}

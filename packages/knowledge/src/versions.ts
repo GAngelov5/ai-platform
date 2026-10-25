@@ -28,3 +28,6 @@ export function supersededVersions(docs: readonly CatalogDocument[]): Map<string
   }
   return out;
 }
+
+/** A version as people read it (shared with the web app). */
+export { displayVersion } from "@platform/contracts";

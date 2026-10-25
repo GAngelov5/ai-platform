@@ -223,6 +223,16 @@ describe("AgentRuntime (context router)", () => {
     const r = extractCitations(`A [[${e.evidenceId}]] B [[ev_other123456]]`, issued);
     expect(r.citations).toHaveLength(1);
     expect(r.text).not.toContain("ev_other");
+    // Marker shapes real models produce (seen with Gemini): all normalized, unknown ids still dropped.
+    const f = ev("b", "y");
+    issued.set(f.evidenceId, { ...issued.get(e.evidenceId)!, evidenceId: f.evidenceId });
+    const [A, F] = [e.evidenceId, f.evidenceId];
+    expect(extractCitations(`X [${A}].`, issued).text).toBe(`X [[${A}]].`);
+    expect(extractCitations(`X [[${A}], [${F}]].`, issued)).toMatchObject({ text: `X [[${A}]][[${F}]].` });
+    expect(extractCitations(`X [[${A}, ${F}]]`, issued).citations).toHaveLength(2);
+    expect(extractCitations(`X [[${A}][${F}]]`, issued).citations).toHaveLength(2);
+    expect(extractCitations(`X [${A}, ev_madeup999999]`, issued)).toMatchObject({ text: `X [[${A}]]` });
+    expect(extractCitations("X [not a citation] and [1]", issued)).toMatchObject({ text: "X [not a citation] and [1]", citations: [] });
     expect(stripReasoning("<think>secret plan</think>\nAnswer")).toBe("Answer");
     expect(stripReasoning("leaked reasoning</think>Answer")).toBe("Answer");
   });
@@ -255,6 +265,68 @@ describe("OpenAICompatibleGateway endpoint policy", () => {
     expect(await gw(models, "llama3:70b").health()).toMatchObject({ ok: false, detail: expect.stringMatching(/not available/) });
     expect(await gw(() => new Response("", { status: 502 })).health()).toMatchObject({ ok: false, detail: expect.stringMatching(/502/) });
     expect(await gw(() => Promise.reject(new TypeError("fetch failed"))).health()).toMatchObject({ ok: false, detail: expect.stringMatching(/unreachable/) });
+  });
+});
+
+describe("OpenAICompatibleGateway with Gemini's OpenAI-compatible API", () => {
+  /** A fake of generativelanguage.googleapis.com/v1beta/openai: strict about tool schemas, like Gemini. */
+  function fakeGemini() {
+    const bodies: Record<string, any>[] = [];
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+      if (u.endsWith("/models")) return json(200, { object: "list", data: [{ id: "models/gemini-3.5-flash-lite", object: "model" }] });
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      bodies.push(body);
+      const params = JSON.stringify((body.tools ?? []).map((t: { function: { parameters: unknown } }) => t.function.parameters));
+      if (/additionalProperties|\$schema/.test(params)) return json(400, { error: { code: 400, message: 'Invalid JSON payload received. Unknown name "additionalProperties"', status: "INVALID_ARGUMENT" } });
+      const usage = { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 };
+      const toolTurn = !body.messages.some((m: { role: string }) => m.role === "tool");
+      return json(200, {
+        id: "c",
+        object: "chat.completion",
+        created: 0,
+        model: "gemini-3.5-flash-lite",
+        choices: [
+          toolTurn
+            ? { index: 0, finish_reason: "tool_calls", message: { role: "assistant", content: null, tool_calls: [{ id: "call_1", type: "function", function: { name: "knowledge_search", arguments: JSON.stringify({ query: "Orion budget" }) } }] } }
+            : { index: 0, finish_reason: "stop", message: { role: "assistant", content: "The Orion pilot budget is 48,500 euros [[ev_1]]." } },
+        ],
+        usage,
+      });
+    }) as unknown as typeof fetch;
+    return { bodies, fetchImpl };
+  }
+  const gemini = (fetchImpl: typeof fetch) =>
+    new OpenAICompatibleGateway({
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+      modelName: "gemini-3.5-flash-lite",
+      apiKey: "test-key",
+      mode: "hybrid",
+      approvedEndpoints: ["https://generativelanguage.googleapis.com"],
+      timeoutMs: 5000,
+      fetch: fetchImpl,
+    });
+
+  it("is healthy when Gemini lists the model as models/<name>", async () => {
+    expect(await gemini(fakeGemini().fetchImpl).health()).toMatchObject({ ok: true });
+  });
+
+  it("calls tools with portable schemas Gemini accepts, and the server still validates the input", async () => {
+    const f = fakeGemini();
+    const seen: unknown[] = [];
+    const r = await gemini(f.fetchImpl).generate({
+      system: "s",
+      messages: [{ role: "user", content: "What is the Orion budget?" }],
+      maxOutputTokens: 256,
+      maxSteps: 3,
+      tools: [{ name: "knowledge_search", description: "Search", inputSchema: z.strictObject({ query: z.string().min(2) }), execute: async (input) => (seen.push(input), { evidence: [] }) }],
+    });
+    expect(r.text).toContain("48,500 euros");
+    expect(seen).toEqual([{ query: "Orion budget" }]);
+    expect(f.bodies[0]!.tools[0].function.parameters).toEqual({ type: "object", properties: { query: { type: "string", minLength: 2 } }, required: ["query"] });
+    // Without the portable conversion the fake (like Gemini) would refuse the platform's strict schema.
+    expect(JSON.stringify(z.toJSONSchema(z.strictObject({ query: z.string().min(2) })))).toMatch(/additionalProperties/);
   });
 });
 

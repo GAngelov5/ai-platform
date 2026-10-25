@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import type { DocumentView } from "@platform/contracts";
+import { displayVersion, type DocumentView } from "@platform/contracts";
 import { useT } from "@platform/ui";
 import { api, ApiRequestError } from "../../../lib/api";
 import { useSession } from "../../../lib/useSession";
@@ -42,7 +42,7 @@ export default function DocumentPage({ params }: { params: Promise<{ documentId:
             <a href="/chat" className="text-sm font-semibold">{t("conn.back")}</a>
             <h1 className="mt-2 text-[26px] font-bold tracking-tight">{doc.title}</h1>
             <p className="mt-1 text-sm text-muted">
-              {t("doc.meta", { source: doc.sourceId, version: doc.version, date: doc.indexedAt.slice(0, 10) })}
+              {t("doc.meta", { source: doc.sourceId, version: displayVersion(doc.version), date: doc.indexedAt.slice(0, 10) })}
             </p>
             {doc.chunks.map((c) => (
               <section

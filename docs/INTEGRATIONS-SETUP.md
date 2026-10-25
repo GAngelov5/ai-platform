@@ -155,6 +155,39 @@ Open https://localhost:8443. With a `.env` that sets `PUBLIC_ORIGIN` to
      revoke call, so to remove the app there too, use Notion → Settings →
      Connections.
 
+## Optional: Gemini as the answer model (testing without GPU hardware)
+
+The demo's fake model only quotes sentences, and the local Ollama model takes
+minutes per answer on CPU. To try real answers now, use Gemini through its
+OpenAI-compatible API.
+
+> Questions and the cited excerpts are sent to Google (`MODEL_MODE=hybrid`).
+> Use synthetic data only. On the free tier, Google may use prompts to improve
+> its products.
+
+1. Create a key at https://aistudio.google.com/apikey.
+2. In `.env`, replace the model lines with:
+   ```bash
+   MODEL_MODE=hybrid
+   MODEL_PROVIDER=openai-compatible
+   MODEL_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+   MODEL_NAME=gemini-3.5-flash-lite
+   MODEL_API_KEY=<your key>
+   MODEL_APPROVED_ENDPOINTS=https://generativelanguage.googleapis.com
+   MODEL_TIMEOUT_MS=120000
+   ```
+3. Restart `pnpm dev:https`. **Admin → Overview → Services → Model** should
+   say `healthy` with `generativelanguage.googleapis.com: gemini-3.5-flash-lite`. If it
+   says "model … not available", pick a name listed in AI Studio.
+4. Ask the Knowledge Assistant one of the Orion questions. The status line
+   shows the Gemini model, and the answer is written prose with citations.
+
+On the Docker stack, add `compose.gemini.yaml` after `compose.saas.yaml`, with
+`GEMINI_API_KEY` (and optionally `GEMINI_MODEL`) in your shell. The egress proxy
+then also allows `generativelanguage.googleapis.com`.
+
+To go back, set `MODEL_PROVIDER=fake` (or the Ollama lines) and restart.
+
 ## Troubleshooting
 
 | You see | Cause |

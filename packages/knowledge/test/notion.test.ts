@@ -216,3 +216,12 @@ describe("Notion through the ingestion pipeline", () => {
     expect([...catalog.values()].every((d) => d.tombstoned)).toBe(true);
   });
 });
+
+describe("version display", () => {
+  it("shows Notion versions as a readable time, without the converter tag", async () => {
+    const { displayVersion } = await import("../src/index.js");
+    expect(displayVersion("2026-10-25T15:40:00.000Z|md3")).toBe("2026-10-25 15:40 UTC");
+    expect(displayVersion("2026-04-30")).toBe("2026-04-30");
+    expect(displayVersion("v2")).toBe("v2");
+  });
+});

@@ -1,0 +1,26 @@
+# Gemini as the answer model, for testing without local GPU hardware.
+# Add after compose.saas.yaml (it provides the egress proxy):
+#
+#   ... -f infra/compose/integrations/compose.saas.yaml -f infra/compose/integrations/compose.gemini.yaml up -d
+#
+# Questions and the cited excerpts leave the deployment (MODEL_MODE=hybrid):
+# use synthetic data only. LightRAG keeps using Ollama for indexing.
+# Secret from your shell or .env: GEMINI_API_KEY. Model: GEMINI_MODEL (default gemini-3.5-flash-lite).
+
+x-gemini-env: &gemini-env
+  MODEL_PROVIDER: openai-compatible
+  MODEL_MODE: hybrid
+  MODEL_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai
+  MODEL_NAME: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+  MODEL_API_KEY: ${GEMINI_API_KEY:?set GEMINI_API_KEY}
+  MODEL_APPROVED_ENDPOINTS: https://generativelanguage.googleapis.com
+  MODEL_TIMEOUT_MS: "120000"
+
+services:
+  api:
+    environment: *gemini-env
+  worker:
+    environment: *gemini-env
+  egress-proxy:
+    environment:
+      EGRESS_ALLOWED_HOSTS: oauth2.googleapis.com,www.googleapis.com,api.notion.com,generativelanguage.googleapis.com

@@ -223,7 +223,10 @@ Last updated: 2026-10-23
 
 - **Pricing units for the licence:** per agent, per workflow, seats? The
   file format can add fields when you decide.
-- **Model size and speed.** `qwen3:4b` on CPU takes 2–6 minutes per answer.
+- **Model size and speed.** For testing until hardware is decided, Gemini can
+  be the answer model through its OpenAI-compatible API (`MODEL_MODE=hybrid`,
+  [INTEGRATIONS-SETUP.md](INTEGRATIONS-SETUP.md)); synthetic data only.
+- **Model size and speed (local).** `qwen3:4b` on CPU takes 2–6 minutes per answer.
   Options: a GPU host, or Ollama natively with Metal on the Mac, or a larger
   model.
 - **Microsoft 365 test tenant**, to unblock Stage 2.

@@ -1,5 +1,6 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { generateText, stepCountIs, tool, type ToolSet } from "ai";
+import { generateText, jsonSchema, stepCountIs, tool, type ToolSet } from "ai";
+import { z } from "zod";
 import { assertApprovedEndpoint, type ModelMode } from "@platform/security";
 import { normalizeModelError, stripReasoning, type GenerateRequest, type GenerateResult, type ModelGateway } from "./gateway.js";
 
@@ -10,14 +11,15 @@ export interface OpenAICompatibleOptions {
   mode: ModelMode;
   approvedEndpoints: readonly string[];
   timeoutMs: number;
-  /** Test hook. */
+  /** Test hook: replaces the network for both health checks and generation. */
   fetch?: typeof fetch;
 }
 
 /**
  * One configurable provider via the AI SDK's OpenAI-compatible adapter. Works
  * with local servers (vLLM, Ollama, llama.cpp) or an explicitly approved
- * hosted endpoint. The endpoint is checked against the allowlist and, in
+ * hosted endpoint, such as Gemini's OpenAI-compatible API for testing without
+ * local hardware (MODEL_MODE=hybrid). The endpoint is checked against the allowlist and, in
  * local mode, must be a local host; this happens before any request is made.
  */
 export class OpenAICompatibleGateway implements ModelGateway {
@@ -27,7 +29,7 @@ export class OpenAICompatibleGateway implements ModelGateway {
   constructor(private readonly o: OpenAICompatibleOptions) {
     assertApprovedEndpoint(o.baseUrl, o.approvedEndpoints, o.mode, "model endpoint");
     this.descriptor = { provider: `openai-compatible:${new URL(o.baseUrl).host}`, name: o.modelName };
-    this.provider = createOpenAICompatible({ name: "platform-model", baseURL: o.baseUrl, apiKey: o.apiKey });
+    this.provider = createOpenAICompatible({ name: "platform-model", baseURL: o.baseUrl, apiKey: o.apiKey, ...(o.fetch ? { fetch: o.fetch } : {}) });
   }
 
   /** Lists the server's models (`GET /models`) and checks the configured one is served. No generation. */
@@ -38,8 +40,9 @@ export class OpenAICompatibleGateway implements ModelGateway {
         signal: AbortSignal.timeout(3000),
       });
       if (!res.ok) return { ok: false, detail: `${this.descriptor.provider}: HTTP ${res.status}` };
-      const ids = (((await res.json()) as { data?: { id?: string }[] }).data ?? []).map((m) => m.id);
-      if (!ids.includes(this.o.modelName)) return { ok: false, detail: `${this.descriptor.provider}: model ${this.o.modelName} not available` };
+      // Gemini lists "models/gemini-3.5-flash-lite"; Ollama and vLLM list the bare name.
+      const ids = (((await res.json()) as { data?: { id?: string }[] }).data ?? []).map((m) => String(m.id ?? "").replace(/^models\//, ""));
+      if (!ids.includes(this.o.modelName.replace(/^models\//, ""))) return { ok: false, detail: `${this.descriptor.provider}: model ${this.o.modelName} not available` };
       return { ok: true, detail: `${this.descriptor.provider}: ${this.o.modelName}` };
     } catch (err) {
       return { ok: false, detail: `${this.descriptor.provider}: ${(err as Error).name === "TimeoutError" ? "timeout" : "unreachable"}` };
@@ -53,7 +56,7 @@ export class OpenAICompatibleGateway implements ModelGateway {
       ? Object.fromEntries(
           req.tools.map((t) => [
             t.name,
-            tool({ description: t.description, inputSchema: t.inputSchema, execute: (input: unknown, o: { abortSignal?: AbortSignal }) => t.execute(input, { signal: o.abortSignal ?? signal }) }),
+            tool({ description: t.description, inputSchema: jsonSchema(portableToolSchema(t.inputSchema)), execute: (input: unknown, o: { abortSignal?: AbortSignal }) => t.execute(input, { signal: o.abortSignal ?? signal }) }),
           ]),
         )
       : undefined;
@@ -80,4 +83,30 @@ export class OpenAICompatibleGateway implements ModelGateway {
       throw normalizeModelError(err, signal);
     }
   }
+}
+
+/** JSON Schema keywords every OpenAI-compatible provider accepts in tool parameters (Gemini's subset is the narrowest). */
+const PORTABLE_KEYS = new Set(["type", "description", "properties", "required", "items", "enum", "minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems", "pattern", "format", "anyOf", "nullable", "title"]);
+
+/**
+ * The tool's input schema as the model sees it: only portable keywords, so
+ * providers that reject e.g. `additionalProperties` or `$schema` (Gemini)
+ * accept it. This only guides the model: the runtime validates every call
+ * against the full schema on the server (ADR 0007), so nothing is loosened.
+ */
+export function portableToolSchema(schema: z.ZodType): Record<string, unknown> {
+  const strip = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(strip);
+    if (!node || typeof node !== "object") return node;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      if (k === "properties" && v && typeof v === "object") {
+        out[k] = Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([name, sub]) => [name, strip(sub)]));
+      } else if (PORTABLE_KEYS.has(k)) {
+        out[k] = strip(v);
+      }
+    }
+    return out;
+  };
+  return strip(z.toJSONSchema(schema, { io: "input", unrepresentable: "any" })) as Record<string, unknown>;
 }
