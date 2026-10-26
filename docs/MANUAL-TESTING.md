@@ -273,7 +273,7 @@ Needs your own Google OAuth client and Notion integration: follow
 | 13.8a | Alice | **Your connections** | The Notion card shows it is connected, with no button: "An administrator connects Notion for the whole organisation." |
 | 13.9 | Alice | Knowledge Assistant: ask about a fact on a shared Notion page | The answer cites the Notion page by its title. |
 | 13.10 | Dana | **Disconnect** Notion, wait about a minute | Admin → Sources: the Notion pages are gone from the index; the same question no longer cites them. |
-| 13.11 | — | Docker only: `docker logs $(docker ps -qf name=egress-proxy)` | `egress` lines only for `oauth2.googleapis.com`, `www.googleapis.com` and `api.notion.com`. |
+| 13.11 | — | Docker only: `docker logs $(docker ps -qf name=egress-proxy)` | `egress` lines only for `oauth2.googleapis.com`, `www.googleapis.com` and `api.notion.com` (plus the Airtable hosts once §15 is set up). |
 
 ## 14. Company sign-in (OIDC)
 
@@ -289,6 +289,73 @@ passwords: [fixtures/keycloak/README.md](../fixtures/keycloak/README.md).
 | 14.5 | — | In the Keycloak admin console (http://localhost:8180/admin), remove alice from "Atlas Team", then sign out and in again as alice | The Atlas question is now refused: groups refresh at every sign-in. Put her back afterwards. |
 | 14.6 | — | At Keycloak, click **Cancel** (or close the tab and reopen the sign-in link later) | "Sign-in was cancelled." or "Sign-in didn't work", and no session. |
 | 14.7 | dana | **Admin → Audit**, filter `auth.` | `auth.oidc_login` rows with the mapped groups and roles. |
+
+## 15. Airtable (indexed bases)
+
+Design: [ADR 0017](adr/0017-airtable-source.md). Every record of the bases
+you grant becomes a cited document, readable by `AIRTABLE_ACL_GROUPS`.
+
+### 15.0 Register the integration (once, about 10 minutes)
+
+1. Sign in at Airtable, then open **https://airtable.com/create/oauth** →
+   **Register new OAuth integration**.
+2. **Name**: for example "Company Brain (dev)".
+3. **OAuth redirect URLs**: add each address you will run on.
+   - `http://localhost:3000/api/connections/airtable/callback` for
+     `pnpm dev:full`. Airtable allows plain `http` for localhost only.
+   - `https://localhost:3000/api/connections/airtable/callback` for
+     `pnpm dev:https`.
+   - `https://localhost:8443/api/connections/airtable/callback` for the
+     Docker stack.
+   - Anything else must be `https://<your host>/api/connections/airtable/callback`,
+     matching `PUBLIC_ORIGIN` exactly.
+4. **Register**, then on the integration's page:
+   - **Scopes**: tick only `data.records:read` and `schema.bases:read`.
+     Leave everything else off, including all `write` scopes and
+     `data.recordComments:read`.
+   - **Client secret**: **Generate client secret**. Copy the client ID and
+     the secret now; the secret is shown once.
+   - **Support e-mail, privacy policy URL and terms of service URL.** While
+     they are empty, only you (the developer) can authorise the
+     integration. Anyone else, such as a colleague who is the base's owner,
+     needs them filled in. For testing, any page you control will do.
+   - **Save changes.**
+5. Put the values in `.env` (git-ignored; never commit it):
+
+   ```bash
+   AIRTABLE_CLIENT_ID=…
+   AIRTABLE_CLIENT_SECRET=…
+   CONNECTION_ENCRYPTION_KEY=…     # already set for Google/Notion? keep it; else: openssl rand -base64 32
+   AIRTABLE_ACL_GROUPS=all-staff   # who may read every granted base
+   # optional: AIRTABLE_BASE_ACL_GROUPS={"appXXXXXXXXXXXXXX": ["finance-legal"]}
+   ```
+
+6. Import the synthetic test base: follow
+   [fixtures/airtable/README.md](../fixtures/airtable/README.md). It has 3
+   tables (Customers, Deals, Contacts) and 12 records.
+7. Restart the API and the worker (`pnpm dev:full`, or `$C up -d` with the
+   SaaS overlay as in §13). The SaaS overlay already allows `airtable.com`
+   and `api.airtable.com` through `egress-proxy`.
+
+### 15.1 Steps
+
+| # | User | Do | Expect |
+|---|---|---|---|
+| 15.1 | Alice | **Your connections** | An **Airtable** card, "connected: no", and no button: "An administrator connects Airtable for the whole organisation." Without the `.env` values: "Not set up for this deployment yet". |
+| 15.2 | Dana | **Connect Airtable** → sign in at Airtable → **+ Add a base** → pick **Sales CRM** → **Grant access** | Back on Your connections: "Airtable is connected", with "Sales CRM · connected by Dana". |
+| 15.3 | Dana | Connect again, but press **Cancel** at Airtable | "You cancelled the Airtable sign-in. Nothing was connected." The existing connection stays. |
+| 15.4 | Dana | **Admin → Sources**, about a minute later (or **Sync now** on `airtable`) | `airtable` shows 12 documents, all indexed, 0 quarantined, with no unmapped groups. |
+| 15.5 | Bob | Knowledge Assistant: "What is the discount cap for the Northwind renewal?" | "8%", citing **Northwind 2027 renewal**. The citation opens the record text; the link goes to the record in Airtable. |
+| 15.6 | Bob | "Who is the training coordinator at Tailspin Travel?" | Ivana Stoyanova, citing the contact. |
+| 15.7 | — | In Airtable, change the Northwind deal's **Notes** to "Discount capped at 5%." Then **Sync now** as Dana | Sources: 1 upserted, 11 unchanged. Asking 15.5 again gives 5%. |
+| 15.8 | — | Rename the customer **Northwind Logistics** to **Northwind Logistics AD**, then Sync now | The customer, its deal and its contact are re-indexed (3 upserted): linked names are part of the text. |
+| 15.9 | — | Delete the **Fabrikam onboarding** deal, then Sync now | 1 tombstoned. The deal is no longer cited. |
+| 15.10 | — | Set `AIRTABLE_ACL_GROUPS=atlas-team`, restart, then Sync now | Every record's groups change (aclChanged 11). Bob now gets "not enough evidence"; Alice still gets the answer. Set it back afterwards. |
+| 15.11 | — | Optional: `AIRTABLE_BASE_ACL_GROUPS={"<the base id, app…>": ["finance-legal"]}` (the id is in the base's URL), restart, then Sync now | Only Carol gets answers from Sales CRM. |
+| 15.12 | — | Wait more than an hour (or set the connection's `access_token_expires_at` to the past in `personal_connections`), then Sync now | Still works: the worker refreshes the token, and Airtable rotates the refresh token. **Your connections** still shows connected. |
+| 15.13 | Dana | **Disconnect** Airtable, wait about a minute | The message says the access was disconnected here only. Sources: every `airtable` document is tombstoned. In Airtable, also remove the grant under **Account → Third-party integrations**. |
+| 15.14 | Dana | **Admin → Audit**, filter `connection.airtable` | `…connected` and `…disconnected` by dana, with no token values. |
+| 15.15 | — | Docker only: `docker logs $(docker ps -qf name=egress-proxy)` | `egress` lines for `airtable.com` (token) and `api.airtable.com` (data), and nothing else new. |
 
 ## What you can't test yet (and why)
 

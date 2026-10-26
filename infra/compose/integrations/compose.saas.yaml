@@ -1,5 +1,5 @@
-# SaaS integrations overlay (ADR 0015): personal Google Calendar and a Notion
-# source. Add it after the other overlays:
+# SaaS integrations overlay (ADR 0015): personal Google Calendar, and Notion and
+# Airtable sources. Add it after the other overlays:
 #
 #   ... -f infra/compose/integrations/compose.saas.yaml up -d
 #
@@ -11,6 +11,8 @@
 #   GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, CONNECTION_ENCRYPTION_KEY
 #   NOTION_OAUTH_CLIENT_ID, NOTION_OAUTH_CLIENT_SECRET ("Connect Notion"), or NOTION_TOKEN
 #   NOTION_ACL_GROUPS (default all-staff)
+#   AIRTABLE_CLIENT_ID, AIRTABLE_CLIENT_SECRET ("Connect Airtable"), AIRTABLE_ACL_GROUPS (default all-staff),
+#   AIRTABLE_BASE_ACL_GROUPS (optional per-base override)
 
 x-saas-env: &saas-env
   # Node's fetch honours HTTPS_PROXY with NODE_USE_ENV_PROXY. Internal services
@@ -25,6 +27,10 @@ x-saas-env: &saas-env
   NOTION_OAUTH_CLIENT_ID: ${NOTION_OAUTH_CLIENT_ID:-}
   NOTION_OAUTH_CLIENT_SECRET: ${NOTION_OAUTH_CLIENT_SECRET:-}
   NOTION_ACL_GROUPS: ${NOTION_ACL_GROUPS:-all-staff}
+  AIRTABLE_CLIENT_ID: ${AIRTABLE_CLIENT_ID:-}
+  AIRTABLE_CLIENT_SECRET: ${AIRTABLE_CLIENT_SECRET:-}
+  AIRTABLE_ACL_GROUPS: ${AIRTABLE_ACL_GROUPS:-all-staff}
+  AIRTABLE_BASE_ACL_GROUPS: ${AIRTABLE_BASE_ACL_GROUPS:-}
 
 services:
   egress-proxy:
@@ -35,7 +41,8 @@ services:
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
     environment:
-      EGRESS_ALLOWED_HOSTS: oauth2.googleapis.com,www.googleapis.com,api.notion.com
+      # airtable.com: OAuth token endpoint; api.airtable.com: bases, schema and records.
+      EGRESS_ALLOWED_HOSTS: oauth2.googleapis.com,www.googleapis.com,api.notion.com,airtable.com,api.airtable.com
       EGRESS_PORT: "3128"
     volumes:
       - ../../services/egress-proxy/proxy.mjs:/app/proxy.mjs:ro

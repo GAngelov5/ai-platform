@@ -16,6 +16,7 @@ const callbackPath = (provider: string) => `/api/connections/${provider}/callbac
 const KNOWN: { id: string; title: string; scope: OAuthProvider["scope"] }[] = [
   { id: "google", title: "Google Calendar", scope: "personal" },
   { id: "notion", title: "Notion", scope: "organization" },
+  { id: "airtable", title: "Airtable", scope: "organization" },
 ];
 
 /**
@@ -24,7 +25,7 @@ const KNOWN: { id: string; title: string; scope: OAuthProvider["scope"] }[] = [
  *
  * - personal connections (Google Calendar) belong to the user who made them;
  *   only they can see, use or remove them.
- * - organization connections (Notion) bring in content others will read, so
+ * - organization connections (Notion, Airtable) bring in content others will read, so
  *   only admins can make or remove them; everyone sees that they exist.
  *
  * The callback arrives from the provider as a cross-site navigation, so the
@@ -168,10 +169,11 @@ export class ConnectionsController {
     return { connected: false, revokedAtProvider: revoked };
   }
 
-  /** A Notion (dis)connection changes what is indexed: ask the worker to sync the source within a minute. */
+  /** A Notion or Airtable (dis)connection changes what is indexed: ask the worker to sync the source within a minute. */
   private async afterChange(p: OAuthProvider, principalId: string) {
-    if (p.id === "notion" && this.deps.config.ingestion.notion) {
-      await this.deps.admin.requestSync(this.deps.config.customerId, "notion", principalId, new Date());
+    const ingested = { notion: this.deps.config.ingestion.notion, airtable: this.deps.config.ingestion.airtable };
+    if ((p.id === "notion" || p.id === "airtable") && ingested[p.id]) {
+      await this.deps.admin.requestSync(this.deps.config.customerId, p.id, principalId, new Date());
     }
   }
 }

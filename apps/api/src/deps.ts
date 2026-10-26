@@ -1,9 +1,11 @@
 import { buildIntegrations, type ActionService } from "@platform/actions";
 import { AgentRegistry, type CapabilityRegistry } from "@platform/agents";
 import {
+  AirtableProvider,
   GoogleCalendarProvider,
   NotionProvider,
   PersonalConnectionStore,
+  type AirtableOAuthEndpoints,
   type ConnectorRegistry,
   type GoogleEndpoints,
   type NotionOAuthEndpoints,
@@ -39,7 +41,7 @@ export const DEFAULT_FIXTURES_DIR = fileURLToPath(new URL("../../../fixtures/doc
 
 /** The configured knowledge sources (the same list the worker ingests). */
 export const configuredSources = (config: PlatformConfig) =>
-  loadSources(config.ingestion.sourcesJson, process.env.FIXTURES_ROOT ?? DEFAULT_FIXTURES_ROOT, { includeEvalCorpus: config.ingestion.includeEvalCorpus, notion: config.ingestion.notion });
+  loadSources(config.ingestion.sourcesJson, process.env.FIXTURES_ROOT ?? DEFAULT_FIXTURES_ROOT, { includeEvalCorpus: config.ingestion.includeEvalCorpus, notion: config.ingestion.notion, airtable: config.ingestion.airtable });
 
 /** Sources this deployment's application policy allows to be searched: every configured source. */
 export const policySourceIds = (config: PlatformConfig) => configuredSources(config).map((s) => s.id);
@@ -129,9 +131,10 @@ export async function buildDeps(input: {
   /** Secret resolver; defaults to process.env. */
   secret?: (name: string) => string | undefined;
   entitlements?: Entitlements;
-  /** Tests only: local fakes of Google's and Notion's endpoints. */
+  /** Tests only: local fakes of Google's, Notion's and Airtable's endpoints. */
   googleEndpoints?: GoogleEndpoints;
   notionEndpoints?: NotionOAuthEndpoints;
+  airtableEndpoints?: AirtableOAuthEndpoints;
   /** Tests only: a local fake identity provider. */
   oidcFetch?: typeof fetch;
 }): Promise<PlatformDeps> {
@@ -182,6 +185,7 @@ export async function buildDeps(input: {
   const providers: OAuthProvider[] = [];
   if (google) providers.push(new GoogleCalendarProvider(google.oauth));
   if (config.integrations.notion) providers.push(new NotionProvider(config.integrations.notion, input.notionEndpoints));
+  if (config.integrations.airtable) providers.push(new AirtableProvider(config.integrations.airtable, input.airtableEndpoints));
   const connections = { providers, store: google?.store ?? (key ? new PersonalConnectionStore(repos.connections, new SecretSealer(key)) : undefined) };
   const runtime = new AgentRuntime({
     knowledge,

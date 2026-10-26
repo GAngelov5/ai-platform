@@ -57,6 +57,19 @@ export interface SealedConnectionRows {
     accessTokenExpiresAt: Date;
   }): Promise<void>;
   delete(customerId: string, principalId: string, provider: string): Promise<boolean>;
+  /**
+   * Runs `fn` while holding a lock on the row (SELECT … FOR UPDATE in the
+   * database), with `write` replacing it in the same transaction. For
+   * providers that rotate refresh tokens: two processes refreshing at once
+   * would otherwise invalidate each other's tokens. Optional: without it,
+   * `PersonalConnectionStore.update` serialises within this process only.
+   */
+  withRowLock?<T>(
+    customerId: string,
+    principalId: string,
+    provider: string,
+    fn: (row: Awaited<ReturnType<SealedConnectionRows["get"]>>, write: (row: Parameters<SealedConnectionRows["upsert"]>[0]) => Promise<void>) => Promise<T>,
+  ): Promise<T>;
 }
 
 /** Seals tokens on the way in, opens them on the way out. The sealing context binds a token to its owner. */
@@ -71,7 +84,10 @@ export class PersonalConnectionStore {
   }
 
   async get(customerId: string, principalId: string, provider: string): Promise<(StoredConnection & { connectedAt: Date }) | undefined> {
-    const r = await this.rows.get(customerId, principalId, provider);
+    return this.open(customerId, principalId, provider, await this.rows.get(customerId, principalId, provider));
+  }
+
+  private open(customerId: string, principalId: string, provider: string, r: Awaited<ReturnType<SealedConnectionRows["get"]>>): (StoredConnection & { connectedAt: Date }) | undefined {
     if (!r) return undefined;
     const ctx = (w: string) => PersonalConnectionStore.context(customerId, principalId, provider, w);
     let accessToken: string;
@@ -96,8 +112,12 @@ export class PersonalConnectionStore {
   }
 
   async save(customerId: string, principalId: string, provider: string, c: StoredConnection): Promise<void> {
+    await this.rows.upsert(this.sealRow(customerId, principalId, provider, c));
+  }
+
+  private sealRow(customerId: string, principalId: string, provider: string, c: StoredConnection): Parameters<SealedConnectionRows["upsert"]>[0] {
     const ctx = (w: string) => PersonalConnectionStore.context(customerId, principalId, provider, w);
-    await this.rows.upsert({
+    return {
       customerId,
       principalId,
       provider,
@@ -107,7 +127,37 @@ export class PersonalConnectionStore {
       accessTokenSealed: this.sealer.seal(c.accessToken, ctx("access")),
       refreshTokenSealed: c.refreshToken ? this.sealer.seal(c.refreshToken, ctx("refresh")) : null,
       accessTokenExpiresAt: c.expiresAt,
-    });
+    };
+  }
+
+  private readonly local = new Map<string, Promise<unknown>>();
+
+  /**
+   * Read, then maybe replace, one connection while nobody else can: the row
+   * is locked across processes when the rows support it, and always within
+   * this process. `save` writes the new connection before the lock is released.
+   */
+  async update<T>(
+    customerId: string,
+    principalId: string,
+    provider: string,
+    fn: (current: (StoredConnection & { connectedAt: Date }) | undefined, save: (c: StoredConnection) => Promise<void>) => Promise<T>,
+  ): Promise<T> {
+    const key = `${customerId}|${principalId}|${provider}`;
+    const run = () =>
+      this.rows.withRowLock
+        ? this.rows.withRowLock(customerId, principalId, provider, (row, write) =>
+            fn(this.open(customerId, principalId, provider, row), (c) => write(this.sealRow(customerId, principalId, provider, c))),
+          )
+        : this.rows.get(customerId, principalId, provider).then((row) => fn(this.open(customerId, principalId, provider, row), (c) => this.save(customerId, principalId, provider, c)));
+    const prev = this.local.get(key) ?? Promise.resolve();
+    const next = prev.catch(() => {}).then(run);
+    this.local.set(key, next);
+    try {
+      return await next;
+    } finally {
+      if (this.local.get(key) === next) this.local.delete(key);
+    }
   }
 
   delete(customerId: string, principalId: string, provider: string) {

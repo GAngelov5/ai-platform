@@ -226,6 +226,15 @@ Results go to `docs/eval/<date>-answers-<label>.md`.
   [docs/INTEGRATIONS-SETUP.md](docs/INTEGRATIONS-SETUP.md). On Docker, add the
   `compose.saas.yaml` overlay. Only its egress proxy reaches the internet.
 
+## Airtable (ADR 0017)
+
+- An admin clicks **Connect Airtable** and picks bases on Airtable's screen.
+  Each record becomes a cited document, readable by `AIRTABLE_ACL_GROUPS`
+  (or per base). Nothing is written to Airtable.
+- Register the integration and import the synthetic test base:
+  [docs/MANUAL-TESTING.md §15](docs/MANUAL-TESTING.md) and
+  [fixtures/airtable/](fixtures/airtable/README.md).
+
 ## Licence and the core assistant (ADR 0014)
 
 - A signed licence file (`LICENCE_FILE`) lists the add-on agents and workflow

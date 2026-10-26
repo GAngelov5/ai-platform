@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { FixtureSourceAdapter } from "./fixture-source.js";
 import { FolderSourceAdapter } from "./folder-source.js";
+import { AIRTABLE_GRANTED_GROUP, airtableBaseGroup, AirtableSourceAdapter } from "./airtable-source.js";
 import { NOTION_SHARED_GROUP, NotionSourceAdapter } from "./notion-source.js";
 import { SourcesConfigSchema, type SourceAdapter, type SourceConfig } from "./types.js";
 
@@ -9,11 +10,14 @@ import { SourcesConfigSchema, type SourceAdapter, type SourceConfig } from "./ty
  * share with inherited permissions. Overridden by KNOWLEDGE_SOURCES (JSON).
  */
 const notionNative = (i: number) => (i === 0 ? NOTION_SHARED_GROUP : `${NOTION_SHARED_GROUP}#${i}`);
+const numbered = (group: string, i: number) => (i === 0 ? group : `${group}#${i}`);
 
 export interface SourceOptions {
   includeEvalCorpus?: boolean;
   /** Adds the Notion source (ADR 0015): every page shared with the integration is readable by these groups. */
   notion?: { aclGroups: string[]; viaConnection?: boolean };
+  /** Adds the Airtable source: every record of every granted base is readable by these groups (or the base's own). */
+  airtable?: { aclGroups: string[]; baseAclGroups?: Record<string, string[]> };
 }
 
 export function defaultSources(fixturesRoot: string, opts: SourceOptions = {}): SourceConfig[] {
@@ -55,7 +59,27 @@ export function defaultSources(fixturesRoot: string, opts: SourceOptions = {}): 
           },
         ]
       : []),
+    ...(opts.airtable ? [airtableSource(opts.airtable)] : []),
   ]);
+}
+
+/** The Airtable source (ADR 0015 addendum): always through the admin's "Connect Airtable". */
+function airtableSource(a: NonNullable<SourceOptions["airtable"]>) {
+  const bases = Object.entries(a.baseAclGroups ?? {});
+  return {
+    id: "airtable",
+    title: "Airtable",
+    kind: "airtable",
+    settings: {
+      tokenFrom: "connection",
+      nativeGroups: a.aclGroups.map((_, i) => numbered(AIRTABLE_GRANTED_GROUP, i)).join(","),
+      ...(bases.length ? { baseNativeGroups: JSON.stringify(Object.fromEntries(bases.map(([b, gs]) => [b, gs.map((_, i) => numbered(airtableBaseGroup(b), i))]))) } : {}),
+    },
+    aclMap: Object.fromEntries([
+      ...a.aclGroups.map((g, i) => [numbered(AIRTABLE_GRANTED_GROUP, i), g]),
+      ...bases.flatMap(([b, gs]) => gs.map((g, i) => [numbered(airtableBaseGroup(b), i), g])),
+    ]),
+  };
 }
 
 export function loadSources(json: string | undefined, fixturesRoot: string, opts: SourceOptions = {}): SourceConfig[] {
@@ -64,8 +88,17 @@ export function loadSources(json: string | undefined, fixturesRoot: string, opts
 
 export function adapterFor(
   source: SourceConfig,
-  opts: { secret?: (name: string) => string | undefined; notionConnection?: () => Promise<string | undefined> } = {},
+  opts: { secret?: (name: string) => string | undefined; notionConnection?: () => Promise<string | undefined>; airtableConnection?: () => Promise<string | undefined> } = {},
 ): SourceAdapter {
+  if (source.kind === "airtable") {
+    if (!opts.airtableConnection) throw new Error(`source ${source.id} needs the Airtable connection store`);
+    return new AirtableSourceAdapter(opts.airtableConnection, {
+      nativeGroups: source.settings.nativeGroups ? source.settings.nativeGroups.split(",") : undefined,
+      baseNativeGroups: source.settings.baseNativeGroups ? (JSON.parse(source.settings.baseNativeGroups) as Record<string, string[]>) : undefined,
+      // Tests only: a local fake of the Airtable API.
+      baseUrl: source.settings.baseUrl,
+    });
+  }
   if (source.kind === "notion") {
     // The token is resolved by reference, never stored in source configuration.
     let token: string | (() => Promise<string | undefined>) | undefined;

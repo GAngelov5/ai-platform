@@ -116,7 +116,8 @@ pnpm --filter @platform/worker run cli ingest notion
 
 The API and worker have no internet route. Only the new `egress-proxy`
 service has one, and it allows HTTPS to `oauth2.googleapis.com`,
-`www.googleapis.com` and `api.notion.com` and nothing else.
+`www.googleapis.com`, `api.notion.com`, `airtable.com` and `api.airtable.com`
+and nothing else. (Airtable setup: [MANUAL-TESTING.md §15](MANUAL-TESTING.md).)
 
 ```bash
 set -a; source .env; set +a        # or export the variables

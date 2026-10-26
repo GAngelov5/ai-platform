@@ -108,6 +108,7 @@ export class FakeGoogle {
 export function memoryConnectionRows(): SealedConnectionRows & { rows: Map<string, Parameters<SealedConnectionRows["upsert"]>[0] & { createdAt: Date }> } {
   const rows = new Map<string, Parameters<SealedConnectionRows["upsert"]>[0] & { createdAt: Date }>();
   const key = (c: string, p: string, v: string) => `${c}|${p}|${v}`;
+  const locks = new Map<string, Promise<void>>();
   return {
     rows,
     async get(c, p, v) {
@@ -119,6 +120,23 @@ export function memoryConnectionRows(): SealedConnectionRows & { rows: Map<strin
     },
     async delete(c, p, v) {
       return rows.delete(key(c, p, v));
+    },
+    // Like the database's row lock: one holder at a time, across every store using these rows.
+    async withRowLock(c, p, v, fn) {
+      const k = key(c, p, v);
+      const prev = locks.get(k) ?? Promise.resolve();
+      let release!: () => void;
+      const mine = new Promise<void>((r) => (release = r));
+      locks.set(k, prev.then(() => mine));
+      await prev;
+      try {
+        return await fn(rows.get(k), async (r) => {
+          const cur = rows.get(k);
+          if (cur) rows.set(k, { ...r, refreshTokenSealed: r.refreshTokenSealed ?? cur.refreshTokenSealed, createdAt: cur.createdAt });
+        });
+      } finally {
+        release();
+      }
     },
   };
 }
@@ -185,6 +203,102 @@ export class FakeNotionOAuth {
     if (body.grant_type === "refresh_token") {
       if (!this.refreshTokens.delete(body.refresh_token ?? "")) return json(400, { error: "invalid_grant" });
       return issue("Refreshed workspace");
+    }
+    return json(400, { error: "unsupported_grant_type" });
+  }
+}
+
+/**
+ * A local fake of Airtable's OAuth endpoints, for tests only. It checks what
+ * real Airtable checks that matters here: HTTP Basic client credentials,
+ * PKCE (S256), redirect URI, single-use codes; and it ROTATES refresh tokens:
+ * each refresh invalidates the previous access and refresh token, and a
+ * refresh token used again within `recentMs` gets 409 (later: invalid_grant).
+ */
+export class FakeAirtableOAuth {
+  server!: Server;
+  endpoints!: { authorize: string; token: string; api: string };
+  private readonly codes = new Map<string, { challenge: string; redirectUri: string; scope: string }>();
+  /** Current refresh token -> its access token. Only the latest pair works. */
+  private readonly live = new Map<string, string>();
+  private readonly used = new Map<string, number>(); // spent refresh token -> when
+  readonly refreshCalls: string[] = [];
+  bases = [{ id: "appSales000000001", name: "Sales CRM", permissionLevel: "read" }];
+  recentMs = 5_000;
+  /** Delay before answering a refresh, so concurrent refreshes really overlap. */
+  refreshDelayMs = 0;
+  private n = 0;
+
+  constructor(private readonly client = { id: "airtable-client", secret: "airtable-secret" }) {}
+
+  async start(): Promise<this> {
+    this.server = createServer((req, res) => void this.handle(req, res));
+    await new Promise<void>((r) => this.server.listen(0, "127.0.0.1", r));
+    const base = `http://127.0.0.1:${(this.server.address() as AddressInfo).port}`;
+    this.endpoints = { authorize: `${base}/oauth2/v1/authorize`, token: `${base}/oauth2/v1/token`, api: base };
+    return this;
+  }
+
+  close() {
+    this.server?.close();
+  }
+
+  /** What Airtable does after the admin picks bases and allows access: the code for the redirect. */
+  consent(authorizationUrl: string, opts: { scope?: string } = {}): string {
+    const u = new URL(authorizationUrl);
+    if (u.searchParams.get("code_challenge_method") !== "S256") throw new Error("Airtable requires PKCE S256");
+    const state = u.searchParams.get("state") ?? "";
+    if (state.length < 16 || state.length > 1024) throw new Error("Airtable requires a state of 16 to 1024 characters");
+    const code = `atcode-${++this.n}`;
+    this.codes.set(code, { challenge: u.searchParams.get("code_challenge") ?? "", redirectUri: u.searchParams.get("redirect_uri") ?? "", scope: opts.scope ?? u.searchParams.get("scope") ?? "" });
+    return code;
+  }
+
+  /** Whether an access token is the current one. */
+  accessTokenWorks(token: string) {
+    return [...this.live.values()].includes(token);
+  }
+
+  private async handle(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse) {
+    const chunks: Buffer[] = [];
+    for await (const c of req) chunks.push(c as Buffer);
+    const json = (status: number, body: unknown) => res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body));
+    const url = new URL(req.url ?? "/", "http://x");
+    if (req.method === "GET" && url.pathname === "/v0/meta/bases") {
+      if (!this.accessTokenWorks((req.headers.authorization ?? "").replace(/^Bearer /, ""))) return json(401, { error: { type: "AUTHENTICATION_REQUIRED" } });
+      return json(200, { bases: this.bases });
+    }
+    if (req.method !== "POST" || url.pathname !== "/oauth2/v1/token") return json(404, {});
+    const basic = `Basic ${Buffer.from(`${this.client.id}:${this.client.secret}`).toString("base64")}`;
+    if (req.headers.authorization !== basic) return json(401, { error: "invalid_client" });
+    if (!String(req.headers["content-type"]).startsWith("application/x-www-form-urlencoded")) return json(400, { error: "invalid_request" });
+    const form = new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
+    const issue = (scope: string) => {
+      const rt = `atrt-${++this.n}`;
+      const at = `atat-${++this.n}`;
+      this.live.clear(); // one connection: the new pair replaces the old one
+      this.live.set(rt, at);
+      return json(200, { access_token: at, refresh_token: rt, token_type: "Bearer", scope, expires_in: 3600, refresh_expires_in: 5_184_000 });
+    };
+    if (form.get("grant_type") === "authorization_code") {
+      const code = form.get("code") ?? "";
+      const c = this.codes.get(code);
+      this.codes.delete(code);
+      const verifier = form.get("code_verifier") ?? "";
+      if (!c || c.redirectUri !== form.get("redirect_uri") || createHash("sha256").update(verifier).digest("base64url") !== c.challenge) return json(400, { error: "invalid_grant" });
+      return issue(c.scope);
+    }
+    if (form.get("grant_type") === "refresh_token") {
+      const rt = form.get("refresh_token") ?? "";
+      this.refreshCalls.push(rt);
+      if (this.refreshDelayMs) await new Promise((r) => setTimeout(r, this.refreshDelayMs));
+      if (this.live.has(rt)) {
+        this.used.set(rt, Date.now());
+        return issue("data.records:read schema.bases:read");
+      }
+      const spent = this.used.get(rt);
+      if (spent !== undefined && Date.now() - spent < this.recentMs) return json(409, { error: "invalid_grant", error_description: "refresh token was recently used" });
+      return json(400, { error: "invalid_grant" });
     }
     return json(400, { error: "unsupported_grant_type" });
   }

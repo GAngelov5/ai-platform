@@ -4,7 +4,7 @@
  * and refuses everything else, including plain HTTP. TLS is end to end
  * between the platform and the SaaS API: the proxy never sees tokens or data.
  *
- *   EGRESS_ALLOWED_HOSTS=api.notion.com,oauth2.googleapis.com,www.googleapis.com
+ *   EGRESS_ALLOWED_HOSTS=api.notion.com,oauth2.googleapis.com,www.googleapis.com,airtable.com,api.airtable.com
  *   EGRESS_PORT=3128
  *
  * No dependencies, so it runs on the plain Node image.

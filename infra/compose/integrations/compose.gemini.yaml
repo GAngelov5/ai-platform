@@ -23,4 +23,4 @@ services:
     environment: *gemini-env
   egress-proxy:
     environment:
-      EGRESS_ALLOWED_HOSTS: oauth2.googleapis.com,www.googleapis.com,api.notion.com,generativelanguage.googleapis.com
+      EGRESS_ALLOWED_HOSTS: oauth2.googleapis.com,www.googleapis.com,api.notion.com,airtable.com,api.airtable.com,generativelanguage.googleapis.com

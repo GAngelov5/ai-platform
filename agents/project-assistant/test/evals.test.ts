@@ -39,7 +39,7 @@ async function world() {
     principals: { get: async (_c, id) => principals.get(id) },
     ledger: { record: async (rows) => rows.forEach((r) => ledger.set(r.evidenceId, r)), get: async (_c, id) => ledger.get(id) },
     adapter: new FixtureKnowledgeAdapter(corpus),
-    policySourceIds: projectAssistant.knowledgeScopes.sourceIds,
+    policySourceIds: "sourceIds" in projectAssistant.knowledgeScopes ? projectAssistant.knowledgeScopes.sourceIds : [],
   });
   const runtime = new AgentRuntime({ knowledge, model, runs: { start: async () => "run", finish: async () => {} }, capabilities: new CapabilityRegistry() });
   return { runtime, model, principals };

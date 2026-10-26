@@ -114,6 +114,20 @@ describe("platform configuration", () => {
     expect(auth).toMatchObject({ allowedDomains: ["company.example"], allowedEmails: ["tester@gmail.example"], defaultGroups: ["all-staff"] });
   });
 
+  it("configures Connect Airtable: both client values, the sealing key, groups, and optional per-base groups", () => {
+    const key = Buffer.alloc(32, 1).toString("base64");
+    const at = { ...prodBase, AIRTABLE_CLIENT_ID: "cid", AIRTABLE_CLIENT_SECRET: "csecret", CONNECTION_ENCRYPTION_KEY: key };
+    expect(problems({ ...prodBase, AIRTABLE_CLIENT_ID: "cid" }).join()).toMatch(/both AIRTABLE_CLIENT_ID and AIRTABLE_CLIENT_SECRET/);
+    expect(problems({ ...at, CONNECTION_ENCRYPTION_KEY: "" }).join()).toMatch(/CONNECTION_ENCRYPTION_KEY is required for the Airtable connection/);
+    expect(problems({ ...at, AIRTABLE_ACL_GROUPS: " , " }).join()).toMatch(/AIRTABLE_ACL_GROUPS must list/);
+    expect(problems({ ...at, AIRTABLE_BASE_ACL_GROUPS: '{"notabase": ["x"]}' }).join()).toMatch(/AIRTABLE_BASE_ACL_GROUPS must be JSON/);
+    expect(problems({ ...at, AIRTABLE_BASE_ACL_GROUPS: '{"appAAAAAAAAAAAAAA": []}' }).join()).toMatch(/AIRTABLE_BASE_ACL_GROUPS must be JSON/);
+    const c = loadPlatformConfig({ ...at, AIRTABLE_ACL_GROUPS: "all-staff, atlas-team", AIRTABLE_BASE_ACL_GROUPS: '{"appAAAAAAAAAAAAAA": ["finance-legal"]}' });
+    expect(c.integrations.airtable).toEqual({ clientId: "cid", clientSecret: "csecret", redirectUri: "https://brain.example.test/api/connections/airtable/callback" });
+    expect(c.ingestion.airtable).toEqual({ aclGroups: ["all-staff", "atlas-team"], baseAclGroups: { appAAAAAAAAAAAAAA: ["finance-legal"] } });
+    expect(loadPlatformConfig({}).ingestion.airtable).toBeUndefined();
+  });
+
   it("defaults to synthetic, offline development settings", () => {
     const c = loadPlatformConfig({});
     expect(c.env).toBe("development");

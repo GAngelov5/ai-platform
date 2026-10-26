@@ -28,15 +28,17 @@ interface Connection {
   canManage: boolean;
 }
 
-const CARD: Record<string, { initials: string; sub: MessageKey; text: MessageKey }> = {
-  google: { initials: "G", sub: "conn.google.sub", text: "conn.google.text" },
-  notion: { initials: "N", sub: "conn.notion.sub", text: "conn.notion.text" },
+const CARD: Record<string, { initials: string; name: MessageKey; sub: MessageKey; text: MessageKey; adminOnly?: MessageKey }> = {
+  google: { initials: "G", name: "connector.google-calendar", sub: "conn.google.sub", text: "conn.google.text" },
+  notion: { initials: "N", name: "connector.notion", sub: "conn.notion.sub", text: "conn.notion.text", adminOnly: "conn.notion.adminOnly" },
+  airtable: { initials: "AT", name: "connector.airtable", sub: "conn.airtable.sub", text: "conn.airtable.text", adminOnly: "conn.airtable.adminOnly" },
 };
+const cardName = (c: Pick<Connection, "provider" | "title">, t: ReturnType<typeof useT>["t"]) => (CARD[c.provider] ? t(CARD[c.provider]!.name) : c.title);
 
 /**
  * One card per integration with its own "Connect" button (ADR 0015). Connect
  * sends you to the provider's sign-in and consent screen and back here.
- * Organization connections (Notion) can be made only by an admin.
+ * Organization connections (Notion, Airtable) can be made only by an admin.
  */
 function ConnectionCard({ c, onChange, note }: { c: Connection; onChange: () => Promise<void>; note?: { text: string; ok: boolean } }) {
   const { t } = useT();
@@ -44,7 +46,7 @@ function ConnectionCard({ c, onChange, note }: { c: Connection; onChange: () => 
   const [msg, setMsg] = useState(note);
   useEffect(() => setMsg(note), [note]);
   const meta = CARD[c.provider];
-  const name = t(`connector.${c.provider === "google" ? "google-calendar" : "notion"}` as MessageKey);
+  const name = cardName(c, t);
 
   const connect = async () => {
     setBusy(true);
@@ -89,7 +91,7 @@ function ConnectionCard({ c, onChange, note }: { c: Connection; onChange: () => 
           {c.scope === "organization" && c.connectedBy ? t("conn.connectedOrg", { account: c.account, who: c.connectedBy }) : t("conn.connectedAs", { account: c.account })}
         </p>
       )}
-      {c.configured && !c.canManage && <p className="mt-2 text-[13px] text-muted">{t("conn.notion.adminOnly")}</p>}
+      {c.configured && !c.canManage && meta?.adminOnly && <p className="mt-2 text-[13px] text-muted">{t(meta.adminOnly)}</p>}
       {msg && (
         <p role="status" className={`mt-3 rounded-xl px-3.5 py-2.5 text-sm ${msg.ok ? "bg-brand-soft text-brand" : "bg-warn-bg text-warn-ink"}`}>
           {msg.text}
@@ -133,7 +135,7 @@ function ConnectionCards() {
   return (
     <>
       {list.map((c) => {
-        const name = t(`connector.${c.provider === "google" ? "google-calendar" : "notion"}` as MessageKey);
+        const name = cardName(c, t);
         const key = (RESULTS.includes(result?.result ?? "") ? `conn.result.${result!.result}` : "conn.result.error") as MessageKey;
         const note = result?.provider === c.provider ? { text: t(key, { name }), ok: result.result === "connected" } : undefined;
         return <ConnectionCard key={c.provider} c={c} onChange={load} note={note} />;
