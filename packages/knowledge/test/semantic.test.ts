@@ -3,7 +3,7 @@
  * Ollama HTTP API. Real embeddings are exercised by scripts/eval-retrieval.mjs.
  */
 import { describe, expect, it } from "vitest";
-import { cosine, KnowledgeBackendError, OllamaEmbedder, SemanticScoringAdapter, type AdapterChunk, type Embedder, type KnowledgeAdapter } from "../src/index.js";
+import { cosine, KnowledgeBackendError, OllamaEmbedder, OpenAICompatibleEmbedder, SemanticScoringAdapter, type AdapterChunk, type CatalogDocument, type Embedder, type KnowledgeAdapter } from "../src/index.js";
 
 const chunk = (id: string, text: string, score = 0.5): AdapterChunk => ({ documentId: id, chunkId: `${id}#0`, text, score });
 
@@ -52,6 +52,81 @@ describe("SemanticScoringAdapter", () => {
 
   it("rejects a ceil that is not above the floor", () => {
     expect(() => new SemanticScoringAdapter(inner([]), fakeEmbedder(), { floor: 0.5, ceil: 0.5 })).toThrow();
+  });
+});
+
+describe("SemanticScoringAdapter, hybrid", () => {
+  const doc = (id: string, title = id): CatalogDocument => ({ customerId: "c", documentId: id, sourceId: "s", version: "1", title, aclGroups: [], aclRevision: 1, externalRef: {}, indexedAt: new Date(0), tombstoned: false });
+  const store: Record<string, AdapterChunk[]> = {
+    travel: [chunk("travel", "per diem rates for trips", 1)],
+    leave: [chunk("leave", "annual leave days", 1)],
+    secret: [chunk("secret", "travel budget of the board", 1)],
+  };
+  /** Word overlap finds nothing for the question below; only the authorized documents' chunks are reachable. */
+  const lexicalNone = (loaded: string[]): KnowledgeAdapter => ({
+    name: "lexical",
+    search: async () => [],
+    getDocumentChunks: async (d) => (loaded.push(d.documentId), store[d.documentId] ?? []),
+    health: async () => ({ ok: true }),
+  });
+
+  it("finds a document that shares no words with the question, among the authorized documents only", async () => {
+    const loaded: string[] = [];
+    const a = new SemanticScoringAdapter(lexicalNone(loaded), fakeEmbedder(), { floor: 0.2, ceil: 0.9, dense: true });
+    const out = await a.search({ query: "money for a work trip", limit: 1, documents: [doc("travel"), doc("leave")] });
+    expect(out.map((c) => c.documentId)).toEqual(["travel"]);
+    expect(loaded.sort()).toEqual(["leave", "travel"]); // "secret" is never loaded: not in the request's documents
+  });
+
+  it("embeds each chunk with its document title, and blends in the word-overlap score", async () => {
+    const e = fakeEmbedder();
+    const inner: KnowledgeAdapter = {
+      name: "lexical",
+      // Same embedding for both; only word overlap separates them.
+      search: async () => [chunk("june", "status report", 1)],
+      getDocumentChunks: async (d) => [chunk(d.documentId, "status report", 1)],
+      health: async () => ({ ok: true }),
+    };
+    const a = new SemanticScoringAdapter(inner, e, { floor: 0, ceil: 1, dense: true, lexicalWeight: 0.2 });
+    const out = await a.search({ query: "status", limit: 2, documents: [doc("july", "Status July"), doc("june", "Status June")] });
+    expect(out.map((c) => c.documentId)).toEqual(["june", "july"]);
+    const sem = cosine([0.5, 0.5], [0.5, 0.5]);
+    expect(out[0]!.score).toBeCloseTo(0.8 * sem + 0.2, 5);
+    expect(out[1]!.score).toBeCloseTo(0.8 * sem, 5); // a chunk found only by embeddings gets no word-overlap share
+    expect(e.calls.flat()).toContain("Status June\nstatus report");
+  });
+});
+
+describe("OpenAICompatibleEmbedder (mocked HTTP)", () => {
+  function fakeApi(status = 200) {
+    const requests: { url: string; auth: string | null; body: { model: string; input: string[] } }[] = [];
+    const f: typeof fetch = async (url, init) => {
+      const body = JSON.parse(String(init!.body)) as { model: string; input: string[] };
+      requests.push({ url: String(url), auth: new Headers(init!.headers).get("authorization"), body });
+      // Out of order on purpose: the client must order by index.
+      const data = body.input.map((t, index) => ({ index, embedding: [t.length, 1] })).reverse();
+      return new Response(JSON.stringify({ data }), { status });
+    };
+    return { f, requests };
+  }
+
+  it("posts to {base}/embeddings in batches with the key, orders by index, and caches documents", async () => {
+    const { f, requests } = fakeApi();
+    const e = new OpenAICompatibleEmbedder({ baseUrl: "https://api.example.test/v1/", model: "m", apiKey: "k", timeoutMs: 1000, fetch: f, batchSize: 2 });
+    expect(await e.embed(["a", "bbb", "cc"], "document")).toEqual([[1, 1], [3, 1], [2, 1]]);
+    expect(requests.map((r) => r.body.input)).toEqual([["a", "bbb"], ["cc"]]);
+    expect(requests[0]).toMatchObject({ url: "https://api.example.test/v1/embeddings", auth: "Bearer k", body: { model: "m" } });
+    await e.embed(["a", "cc"], "document");
+    expect(requests).toHaveLength(2); // cached
+    await e.embed(["a"], "query");
+    expect(requests).toHaveLength(3); // queries are never cached
+  });
+
+  it("fails closed on errors and unexpected shapes", async () => {
+    const e = new OpenAICompatibleEmbedder({ baseUrl: "https://x.test/v1", model: "m", timeoutMs: 1000, fetch: fakeApi(500).f });
+    await expect(e.embed(["a"], "query")).rejects.toBeInstanceOf(KnowledgeBackendError);
+    const bad = new OpenAICompatibleEmbedder({ baseUrl: "https://x.test/v1", model: "m", timeoutMs: 1000, fetch: async () => new Response(JSON.stringify({ data: [] })) });
+    await expect(bad.embed(["a"], "query")).rejects.toMatchObject({ kind: "invalid_response" });
   });
 });
 

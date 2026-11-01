@@ -55,14 +55,24 @@ const EnvSchema = z.object({
   LIGHTRAG_RANKING: z.enum(["lexical", "native"]).default("lexical"),
   LIGHTRAG_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(60000),
 
-  /** How evidence is scored: query-term overlap, or embedding similarity (ADR 0010). */
-  EVIDENCE_SCORING: z.enum(["lexical", "semantic"]).default("lexical"),
+  /**
+   * How evidence is found and scored (ADR 0010): query-term overlap; embedding similarity over
+   * the backend's candidates (semantic); or hybrid, where every authorized chunk is also a
+   * candidate by embedding similarity (finds documents that share no words with the question).
+   */
+  EVIDENCE_SCORING: z.enum(["lexical", "semantic", "hybrid"]).default("lexical"),
+  /** ollama: POST /api/embed. openai-compatible: POST {base}/embeddings (vLLM, TEI, Gemini). */
+  EMBEDDING_PROVIDER: z.enum(["ollama", "openai-compatible"]).default("ollama"),
   EMBEDDING_BASE_URL: z.string().url().optional(),
+  /** For openai-compatible embeddings. Falls back to MODEL_API_KEY when the embedding endpoint is the model's own host. */
+  EMBEDDING_API_KEY: z.string().optional(),
   EMBEDDING_MODEL: z.string().min(1).default("nomic-embed-text"),
   EMBEDDING_TIMEOUT_MS: z.coerce.number().int().min(500).max(120000).default(15000),
   /** Cosine mapped to evidence score 0 and 1. Defaults (nomic-embed-text): cosine 0.60 → score 0.6, calibrated on the eval sets for no wrong refusals (ADR 0010). */
   SEMANTIC_SCORE_FLOOR: z.coerce.number().min(-1).max(1).default(0.15),
   SEMANTIC_SCORE_CEIL: z.coerce.number().min(-1).max(1).default(0.9),
+  /** Hybrid: share of word overlap in the evidence score (ADR 0010, decision 5). */
+  HYBRID_LEXICAL_WEIGHT: z.coerce.number().min(0).max(1).default(0.2),
 
   /** JSON list of knowledge sources (packages/knowledge SourcesConfigSchema); defaults to the synthetic sources. */
   KNOWLEDGE_SOURCES: z.string().optional(),
@@ -146,7 +156,7 @@ export interface PlatformConfig {
       };
   evidenceScoring:
     | { mode: "lexical" }
-    | { mode: "semantic"; baseUrl: string; model: string; timeoutMs: number; floor: number; ceil: number };
+    | { mode: "semantic" | "hybrid"; provider: "ollama" | "openai-compatible"; baseUrl: string; apiKey?: string; model: string; timeoutMs: number; floor: number; ceil: number; lexicalWeight: number };
   integrations: {
     mcpServersJson?: string;
     proposalTtlMinutes: number;
@@ -268,9 +278,19 @@ export function loadPlatformConfig(
     }
   }
 
-  if (e.EVIDENCE_SCORING === "semantic") {
-    if (!e.EMBEDDING_BASE_URL) problems.push("EMBEDDING_BASE_URL is required when EVIDENCE_SCORING=semantic");
-    else if (!isLocalHostname(new URL(e.EMBEDDING_BASE_URL).hostname)) problems.push("EMBEDDING_BASE_URL must point at the private network");
+  if (e.EVIDENCE_SCORING !== "lexical") {
+    if (!e.EMBEDDING_BASE_URL) problems.push(`EMBEDDING_BASE_URL is required when EVIDENCE_SCORING=${e.EVIDENCE_SCORING}`);
+    else if (!isLocalHostname(new URL(e.EMBEDDING_BASE_URL).hostname)) {
+      // Embedding sends document text. Outside the private network only under the same explicit
+      // approval as the answer model: hybrid model mode and an approved endpoint.
+      try {
+        if (e.MODEL_MODE !== "hybrid") throw new Error("EMBEDDING_BASE_URL must point at the private network unless MODEL_MODE=hybrid");
+        assertApprovedEndpoint(e.EMBEDDING_BASE_URL, e.MODEL_APPROVED_ENDPOINTS, e.MODEL_MODE, "EMBEDDING_BASE_URL");
+        if (new URL(e.EMBEDDING_BASE_URL).protocol !== "https:") throw new Error("EMBEDDING_BASE_URL outside the private network must use https");
+      } catch (err) {
+        problems.push((err as Error).message);
+      }
+    }
     if (!(e.SEMANTIC_SCORE_CEIL > e.SEMANTIC_SCORE_FLOOR)) problems.push("SEMANTIC_SCORE_CEIL must be above SEMANTIC_SCORE_FLOOR");
   }
 
@@ -397,14 +417,19 @@ export function loadPlatformConfig(
             }
           : { provider: "fixture", fixturesDir: e.FIXTURES_DIR },
     evidenceScoring:
-      e.EVIDENCE_SCORING === "semantic"
+      e.EVIDENCE_SCORING !== "lexical"
         ? {
-            mode: "semantic",
+            mode: e.EVIDENCE_SCORING,
+            provider: e.EMBEDDING_PROVIDER,
             baseUrl: e.EMBEDDING_BASE_URL!,
+            apiKey:
+              e.EMBEDDING_API_KEY ||
+              (e.MODEL_API_KEY && e.MODEL_BASE_URL && new URL(e.MODEL_BASE_URL).origin === new URL(e.EMBEDDING_BASE_URL!).origin ? e.MODEL_API_KEY : undefined),
             model: e.EMBEDDING_MODEL,
             timeoutMs: e.EMBEDDING_TIMEOUT_MS,
             floor: e.SEMANTIC_SCORE_FLOOR,
             ceil: e.SEMANTIC_SCORE_CEIL,
+            lexicalWeight: e.HYBRID_LEXICAL_WEIGHT,
           }
         : { mode: "lexical" },
     integrations: {

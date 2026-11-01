@@ -128,6 +128,24 @@ describe("platform configuration", () => {
     expect(loadPlatformConfig({}).ingestion.airtable).toBeUndefined();
   });
 
+  it("sends documents to an external embedding endpoint only when hybrid model mode approved it", () => {
+    const dev = { EVIDENCE_SCORING: "hybrid", EMBEDDING_PROVIDER: "openai-compatible", EMBEDDING_BASE_URL: "https://generativelanguage.googleapis.com/v1beta/openai", EMBEDDING_MODEL: "gemini-embedding-001" };
+    expect(() => loadPlatformConfig(dev)).toThrow(/private network unless MODEL_MODE=hybrid/);
+    expect(() => loadPlatformConfig({ ...dev, MODEL_MODE: "hybrid" })).toThrow(/not in the approved endpoint list/);
+    const ok = loadPlatformConfig({
+      ...dev,
+      MODEL_MODE: "hybrid",
+      MODEL_PROVIDER: "openai-compatible",
+      MODEL_NAME: "m",
+      MODEL_BASE_URL: "https://generativelanguage.googleapis.com/v1beta/openai",
+      MODEL_API_KEY: "model-key",
+      MODEL_APPROVED_ENDPOINTS: "https://generativelanguage.googleapis.com",
+    });
+    // Same host as the answer model: its key is reused.
+    expect(ok.evidenceScoring).toMatchObject({ mode: "hybrid", provider: "openai-compatible", apiKey: "model-key", lexicalWeight: 0.2 });
+    expect(loadPlatformConfig({ EVIDENCE_SCORING: "hybrid", EMBEDDING_BASE_URL: "http://ollama:11434" }).evidenceScoring).toMatchObject({ mode: "hybrid", provider: "ollama" });
+  });
+
   it("defaults to synthetic, offline development settings", () => {
     const c = loadPlatformConfig({});
     expect(c.env).toBe("development");

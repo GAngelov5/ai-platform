@@ -34,14 +34,14 @@ Last updated: 2026-10-23
    - SharePoint source adapter (Graph delta queries), on the ADR 0009 pipeline.
    - Personal-account connect flow behind "Your connections".
 2. **Stage 3b, rest**
-   - **Evidence score:** semantic scoring (`EVIDENCE_SCORING=semantic`) cut
-     wrong refusals on the hard set from 64.7% to 0% with LightRAG. But the
-     platform then no longer refuses off-topic questions; the model must.
-     Next: try a cross-encoder re-ranker, and decide the default after the
-     answer-level gate (ADR 0010, Decision 4).
-   - **Answer-level gate:** now measured with Gemini (see Notes). Refusals,
-     leaks and Bulgarian pass; citation support and the answer rate on
-     paraphrased questions don't yet.
+   - **Hybrid retrieval** (`EVIDENCE_SCORING=hybrid`, ADR 0010, Decision 5):
+     supporting document in the top 5 for 95% of questions (word overlap: 65%).
+     Answer gate: everything passes except the answer rate, 87–89% against 90%.
+   - Next:
+     - calibrate a local embedding model (nomic-embed-text) for hybrid, then
+       make hybrid the default
+     - a persistent vector store (pgvector) for larger corpora
+     - a re-ranker for the last loose paraphrases
    - OCR for scans.
 3. **Stage 4 · Production hardening:** OIDC, secrets manager, image slimming
    and scanning, egress tests in CI, backup and restore drills,
@@ -58,14 +58,21 @@ Last updated: 2026-10-23
   2 s per answer. Every base category (status, decisions, specs, conflicting
   versions, policies, restricted, multi-document, permissions) behaves as
   expected.
-- **Fail: citation support 90–91%** (target 95%). Most unsupported sentences
-  mention a superseded plan's date but cite the current plan. A prompt rule
-  against that changed nothing with Flash-Lite. Next: run the same eval with a
-  stronger model (`MODEL_NAME=gemini-3.7-flash`), to tell model size from
-  platform.
-- **Fail: answer rate 76–78%** (target 90%). 11 of 13 paraphrased questions are
-  refused because word-matching search doesn't find paraphrases (the known
-  retrieval gap). Next: semantic scoring or LightRAG for these, then re-run.
+- **2026-11-01, hybrid retrieval (ADR 0010, Decision 5):**
+  - Citation support is now 96.8–100% (pass).
+  - Answerable questions answered: 87–89%, still just under the 90% target. The
+    rest are loose paraphrases that the model declines although the document
+    was found.
+  - A larger model (3.7 Flash) did worse: 78% answered, and it adds "may be out
+    of date" disclaimers.
+  - Next options:
+    - a re-ranker
+    - a "did you mean …" reply that names the source's term
+    - accept 87–89% for paraphrases
+- **Was: citation support 90–91%**, mostly because a document's heading (project
+  and version) wasn't part of the cited passage. Fixed: passages carry their heading.
+- **Was: answer rate 76–78%**, because word-matching search doesn't find
+  paraphrases. Improved with hybrid retrieval.
 - **Fixed on the way:**
   - The core Knowledge Assistant searched only a fixed source list, so a
     customer's own sources would never have been searched. It now searches all

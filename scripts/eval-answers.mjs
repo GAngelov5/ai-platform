@@ -82,7 +82,7 @@ SUPPORTED: every fact in the CLAIM is stated in the cited SOURCES. Paraphrase an
 UNSUPPORTED: the claim adds a fact the sources don't state, or contradicts them.
 
 SOURCES:
-${sources.map((x, i) => `[${i + 1}] Title: ${x.title} · version ${x.version} · indexed ${String(x.indexedAt ?? "").slice(0, 10)}\n${x.excerpt}`).join("\n\n")}
+${sources.map((x, i) => `[${i + 1}] Title: ${x.title}${x.location ? ` · section: ${x.location}` : ""} · version ${x.version} · indexed ${String(x.indexedAt ?? "").slice(0, 10)}\n${x.excerpt}`).join("\n\n")}
 
 CLAIM: ${claim}`;
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -154,7 +154,7 @@ for (const q of questions) {
 
   let claims = [];
   if (JUDGE && answered) {
-    const sourceOf = new Map((m.citations ?? []).map((c) => [c.evidenceId, { title: c.title ?? c.resourceId ?? "", version: c.version ?? "", indexedAt: c.indexedAt ?? c.readAt, excerpt: c.excerpt ?? "" }]));
+    const sourceOf = new Map((m.citations ?? []).map((c) => [c.evidenceId, { title: c.title ?? c.resourceId ?? "", location: c.location, version: c.version ?? "", indexedAt: c.indexedAt ?? c.readAt, excerpt: c.excerpt ?? "" }]));
     for (const c of citedClaims(m.content)) {
       const ok = await judge(c.text, c.ids.map((id) => sourceOf.get(id) ?? { title: "", version: "", excerpt: "" }));
       claims.push({ claim: c.text.slice(0, 200), supported: ok });

@@ -23,6 +23,7 @@ import {
   type ChunkLoader,
   LightRagKnowledgeAdapter,
   OllamaEmbedder,
+  OpenAICompatibleEmbedder,
   PolicyEnforcingKnowledgeService,
   SemanticScoringAdapter,
   RagflowKnowledgeAdapter,
@@ -79,9 +80,13 @@ export function contentStoreChunks(repos: Repositories): ChunkLoader {
 export async function createKnowledgeAdapter(config: PlatformConfig, repos: Repositories): Promise<KnowledgeAdapter> {
   const base = await createRetrievalAdapter(config, repos);
   const s = config.evidenceScoring;
-  if (s.mode !== "semantic") return base;
-  // Backend-independent semantic evidence score over the backend's candidates (ADR 0010).
-  return new SemanticScoringAdapter(base, new OllamaEmbedder({ baseUrl: s.baseUrl, model: s.model, timeoutMs: s.timeoutMs }), { floor: s.floor, ceil: s.ceil });
+  if (s.mode === "lexical") return base;
+  // Backend-independent semantic evidence score (ADR 0010); hybrid also retrieves by embedding similarity.
+  const embedder =
+    s.provider === "openai-compatible"
+      ? new OpenAICompatibleEmbedder({ baseUrl: s.baseUrl, apiKey: s.apiKey, model: s.model, timeoutMs: s.timeoutMs })
+      : new OllamaEmbedder({ baseUrl: s.baseUrl, model: s.model, timeoutMs: s.timeoutMs });
+  return new SemanticScoringAdapter(base, embedder, { floor: s.floor, ceil: s.ceil, dense: s.mode === "hybrid", lexicalWeight: s.lexicalWeight });
 }
 
 async function createRetrievalAdapter(config: PlatformConfig, repos: Repositories): Promise<KnowledgeAdapter> {

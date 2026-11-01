@@ -86,6 +86,90 @@ export class OllamaEmbedder implements Embedder {
   }
 }
 
+export interface OpenAICompatibleEmbedderOptions {
+  /** Base URL including the API version, e.g. https://generativelanguage.googleapis.com/v1beta/openai or http://vllm:8000/v1. */
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+  timeoutMs: number;
+  fetch?: typeof fetch;
+  cacheSize?: number;
+  /** Texts per request; providers cap batch sizes (Gemini: 100). */
+  batchSize?: number;
+}
+
+/**
+ * Embeddings from any OpenAI-compatible `POST {base}/embeddings` (vLLM, TEI,
+ * Ollama's /v1, Gemini's OpenAI endpoint). Whether the endpoint may receive
+ * document text is decided by configuration (private network, or an approved
+ * endpoint in hybrid mode), never here.
+ */
+export class OpenAICompatibleEmbedder implements Embedder {
+  readonly model: string;
+  private readonly cache = new Map<string, number[]>();
+  private readonly f: typeof fetch;
+
+  constructor(private readonly o: OpenAICompatibleEmbedderOptions) {
+    this.model = o.model;
+    this.f = o.fetch ?? fetch;
+  }
+
+  private async call(input: string[], signal?: AbortSignal): Promise<number[][]> {
+    const out: number[][] = [];
+    const size = this.o.batchSize ?? 100;
+    for (let i = 0; i < input.length; i += size) {
+      const batch = input.slice(i, i + size);
+      const timeout = AbortSignal.timeout(this.o.timeoutMs);
+      let res: Response;
+      try {
+        res = await this.f(`${this.o.baseUrl.replace(/\/$/, "")}/embeddings`, {
+          method: "POST",
+          headers: { "content-type": "application/json", ...(this.o.apiKey ? { authorization: `Bearer ${this.o.apiKey}` } : {}) },
+          body: JSON.stringify({ model: this.model, input: batch }),
+          signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+        });
+      } catch (err) {
+        const kind = (err as Error).name === "TimeoutError" ? "timeout" : "unavailable";
+        throw new KnowledgeBackendError(kind, `embedding request failed: ${(err as Error).message}`);
+      }
+      if (!res.ok) throw new KnowledgeBackendError(res.status === 429 ? "unavailable" : "unavailable", `embedding service returned ${res.status}`);
+      const body = (await res.json()) as { data?: { index?: number; embedding?: unknown }[] };
+      const data = body.data;
+      if (!Array.isArray(data) || data.length !== batch.length || !data.every((d) => Array.isArray(d.embedding) && (d.embedding as unknown[]).every((x) => typeof x === "number"))) {
+        throw new KnowledgeBackendError("invalid_response", "embedding service returned an unexpected shape");
+      }
+      const ordered = [...data].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+      out.push(...ordered.map((d) => d.embedding as number[]));
+    }
+    return out;
+  }
+
+  async embed(texts: readonly string[], kind: "query" | "document", signal?: AbortSignal): Promise<number[][]> {
+    if (kind === "query") return this.call([...texts], signal);
+    const keys = texts.map((t) => createHash("sha256").update(`${this.model}\u0000${t}`).digest("hex"));
+    const missing = [...new Set(keys.filter((k) => !this.cache.has(k)))];
+    if (missing.length) {
+      const textOf = new Map(keys.map((k, i) => [k, texts[i]!]));
+      const vectors = await this.call(missing.map((k) => textOf.get(k)!), signal);
+      const max = this.o.cacheSize ?? 20_000;
+      missing.forEach((k, i) => {
+        if (this.cache.size >= max) this.cache.delete(this.cache.keys().next().value!);
+        this.cache.set(k, vectors[i]!);
+      });
+    }
+    return keys.map((k) => this.cache.get(k)!);
+  }
+
+  async health() {
+    try {
+      await this.call(["health"]);
+      return { ok: true, detail: `embeddings ${this.model}` };
+    } catch (err) {
+      return { ok: false, detail: `embeddings: ${(err as Error).message}` };
+    }
+  }
+}
+
 export function cosine(a: readonly number[], b: readonly number[]): number {
   let dot = 0;
   let na = 0;
@@ -105,6 +189,18 @@ export interface SemanticScoringOptions {
   ceil: number;
   /** How many candidates to ask the inner adapter for, as a multiple of the limit. */
   candidateFactor?: number;
+  /**
+   * Hybrid retrieval: besides the inner adapter's candidates, every chunk of the
+   * authorized documents is a candidate by embedding similarity. Finds documents
+   * that share no words with the question ("analytics platform" for Borealis).
+   * Embeddings are computed once per chunk text and cached.
+   */
+  dense?: boolean;
+  /**
+   * Hybrid only: share of the inner adapter's (lexical) score in the final score. Embeddings
+   * barely tell "June" from "July"; word overlap does. Measured on the eval corpus: 0.2.
+   */
+  lexicalWeight?: number;
 }
 
 /**
@@ -131,14 +227,48 @@ export class SemanticScoringAdapter implements KnowledgeAdapter {
   }
 
   async search(req: AdapterSearchRequest): Promise<AdapterChunk[]> {
-    const candidates = await this.inner.search({ ...req, limit: Math.min(req.limit * (this.o.candidateFactor ?? 3), 30) });
+    if (!this.o.dense) {
+      const candidates = await this.inner.search({ ...req, limit: Math.min(req.limit * (this.o.candidateFactor ?? 3), 30) });
+      if (candidates.length === 0) return [];
+      const [q] = await this.embedder.embed([req.query], "query", req.signal);
+      const docs = await this.embedder.embed(candidates.map((c) => c.text), "document", req.signal);
+      return candidates
+        .map((c, i) => ({ ...c, score: this.score(cosine(q!, docs[i]!)) }))
+        .sort((a, b) => b.score - a.score || a.chunkId.localeCompare(b.chunkId))
+        .slice(0, req.limit);
+    }
+    // Hybrid: the inner adapter's matches with their word-overlap score, plus every other authorized chunk at 0.
+    const lexical = await this.inner.search({ ...req, limit: 100 });
+    const lexScore = new Map(lexical.map((c) => [c.chunkId, c.score]));
+    const candidates = await this.withDense(lexical, req);
     if (candidates.length === 0) return [];
     const [q] = await this.embedder.embed([req.query], "query", req.signal);
-    const docs = await this.embedder.embed(candidates.map((c) => c.text), "document", req.signal);
+    // The title carries what a chunk often doesn't repeat: the project, the month, the kind of document.
+    const titles = new Map(req.documents.map((d) => [d.documentId, d.title]));
+    const docs = await this.embedder.embed(
+      candidates.map((c) => [titles.get(c.documentId), c.location, c.text].filter(Boolean).join("\n")),
+      "document",
+      req.signal,
+    );
+    const w = this.o.lexicalWeight ?? 0.2;
     return candidates
-      .map((c, i) => ({ ...c, score: this.score(cosine(q!, docs[i]!)) }))
+      .map((c, i) => ({ ...c, score: (1 - w) * this.score(cosine(q!, docs[i]!)) + w * Math.max(0, Math.min(1, lexScore.get(c.chunkId) ?? 0)) }))
       .sort((a, b) => b.score - a.score || a.chunkId.localeCompare(b.chunkId))
       .slice(0, req.limit);
+  }
+
+  /** Union of the inner candidates and every chunk of the authorized documents (only those: `req.documents` is the policy prefilter). */
+  private async withDense(lexical: AdapterChunk[], req: AdapterSearchRequest): Promise<AdapterChunk[]> {
+    const seen = new Set(lexical.map((c) => c.chunkId));
+    const all: AdapterChunk[] = [...lexical];
+    for (const doc of req.documents) {
+      for (const c of await this.inner.getDocumentChunks(doc, req.signal)) {
+        if (seen.has(c.chunkId)) continue;
+        seen.add(c.chunkId);
+        all.push(c);
+      }
+    }
+    return all;
   }
 
   getDocumentChunks(doc: CatalogDocument, signal?: AbortSignal) {

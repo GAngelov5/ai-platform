@@ -230,6 +230,81 @@ passes the answer-level abstention gate. Until then it stays opt-in
 would give a better-calibrated relevance score, and is the next option to
 evaluate.
 
+## Decision 5 — Hybrid retrieval, and passages that carry their headings (2026-11-01)
+
+**Problem (answer-level eval, 2026-10-25):** 11 of 13 reworded questions were
+refused, and about 10% of cited sentences were judged unsupported.
+- **Retrieval.** Word overlap can't find a document that never uses the
+  question's words ("analytics platform" for the Borealis report). Decision 4's
+  semantic score only re-ranks word-overlap candidates, so it can't help when
+  the right passage isn't a candidate at all.
+- **Passages without context.** A document's `# ` heading ("Ember go-live plan
+  (version 2, current)") became a passage with no facts. The passage with the
+  date said neither project nor version. So neither the model nor a reader could
+  tell "current" from "superseded" from the cited text.
+
+**Decision:**
+- **`EVIDENCE_SCORING=hybrid`.** Every chunk of the authorized documents
+  (`req.documents`, the policy prefilter, unchanged) is a candidate by embedding
+  similarity, besides the word-overlap matches.
+  - Score = 0.8 × semantic + 0.2 × word overlap (`HYBRID_LEXICAL_WEIGHT`).
+    Embeddings barely tell "June" from "July"; word overlap does.
+  - Each chunk is embedded with its document title and section. Embeddings are
+    cached per chunk text.
+  - `semantic` mode is unchanged, so its Decision 4 calibration still holds.
+- **Embeddings from an OpenAI-compatible endpoint** (`EMBEDDING_PROVIDER=openai-compatible`:
+  vLLM, TEI, Ollama's /v1, Gemini), besides Ollama.
+  - Embedding sends document text. Outside the private network it is allowed only
+    under the answer model's own approval: `MODEL_MODE=hybrid` and the endpoint in
+    `MODEL_APPROVED_ENDPOINTS`, over https.
+- **Passages carry their heading.** The leading `# ` heading becomes part of
+  every chunk's location ("Ember go-live plan (version 2, current) › Go-live")
+  instead of a passage of its own.
+  - The location is given to the model (`section`), to the embedder and to the
+    eval judge.
+  - Chunk ids keep their numbering, so ids already issued or indexed stay valid.
+- **Answer rule.** When a source clearly describes the same thing in other
+  words, answer in the source's terms. State only what the cited result says.
+
+**Retrieval (gemini-embedding-001, 43 answerable and 13 unanswerable questions;
+hit = a supporting document in the top 5):**
+
+| Variant | Hit | Hit with score ≥ 0.6 |
+|---|---|---|
+| Word overlap | 65% | 65% |
+| Semantic re-rank (Decision 4) | 80% | 80% |
+| Hybrid, embeddings only | 91% | — |
+| **Hybrid, 0.8 semantic + 0.2 word overlap** | **95%** | **91%** (floor 0.50, ceil 0.85) |
+
+As in Decision 4, a similarity threshold doesn't separate off-topic questions.
+With these settings it filters 38% of them, and the model refuses the rest.
+
+**Answers (Gemini 3.5 Flash-Lite, judged by Gemini 3.7 Flash, 60 questions):**
+
+| | 2026-10-25 (word overlap) | 2026-11-01 hybrid, run 1 | hybrid, run 2 (two-sided rule) |
+|---|---|---|---|
+| Citation support (≥ 95%) | 90.2% | **100%** | **96.8%** |
+| Answerable answered (≥ 90%) | 78.3% | 87.0% | 89.1% |
+| Unanswerable refused (100%) | 100% | 100% | 100% |
+| Leaks (0) | 0 | 0 | 0 |
+| Latency p50 / p95 | 2.1 / 3.5 s | 2.3 / 4.5 s | 2.3 / 5.1 s |
+
+**A larger answer model is not the fix.** The same eval with Gemini 3.7 Flash as
+the answer model (also the judge, so read with care): citation support 91.3%,
+answerable answered 78.3%, latency p50 9.8 s. It refuses more of the loose
+paraphrases. It also adds "this may be out of date" to cited sentences, which
+the judge counts as unsupported.
+
+The remaining refusals are loose paraphrases where retrieval did return the
+document. The model judges, for example, that "warehouse robots" may not be the
+source's "autonomous carts". Two answers to the same question can differ between
+runs (the gym question was answered in one run and refused in the other).
+
+**Default:** `lexical` stays the default, so a deployment with no embedding
+model keeps working. `hybrid` is the recommended setting wherever an embedding
+model is available. For local-only deployments, nomic-embed-text needs its own
+calibration on these sets before it becomes the default there.
+
 ## Not covered (yet)
 
 - **Citation support and model-level abstention.** These need real model
@@ -240,8 +315,12 @@ evaluate.
   access sets, so it does not answer this question.
 - **A cross-encoder re-ranker** as the evidence score, compared with
   embedding similarity on the same sets (Decision 4).
-- **Default scoring:** switch to semantic once the model passes the
-  answer-level abstention gate.
+- **Default scoring:** `hybrid` with a local embedding model, once
+  nomic-embed-text (or another local model) is calibrated on these sets.
+- **Embedding cache across restarts.** Embeddings are cached in memory per API
+  process, so the first search after a restart embeds every authorized chunk
+  (seconds for this corpus). A persistent vector store (pgvector) is needed
+  well before a corpus of a few thousand documents.
 
 ## Open questions
 

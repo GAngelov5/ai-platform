@@ -8,15 +8,33 @@ export interface TextChunk {
  * Splits parsed text into section chunks on "## " headings, and long sections
  * into pieces of at most MAX_CHUNK_CHARS. Used identically
  * for every source, for lexical retrieval and the protected document view.
+ *
+ * A leading "# " document heading ("Ember go-live plan (version 2, current)")
+ * is context for every section, so it becomes part of each chunk's location
+ * ("Ember go-live plan (version 2, current) › Go-live") instead of a chunk of
+ * its own with no facts. Chunk ids keep their numbering, so ids that were
+ * issued or indexed before stay valid.
  */
 export function chunkText(documentId: string, text: string): TextChunk[] {
   const chunks: TextChunk[] = [];
+  let n = 0;
   let heading: string | undefined;
-  for (const block of text.split(/\n(?=## )/)) {
+  let title: string | undefined;
+  const at = () => (title && heading ? `${title} › ${heading}` : (heading ?? title));
+  for (const [i, block] of text.split(/\n(?=## )/).entries()) {
     const lines = block.split("\n");
+    if (i === 0) {
+      const first = lines.findIndex((l) => l.trim() !== "");
+      if (first >= 0 && /^# \S/.test(lines[first]!)) {
+        title = lines[first]!.slice(2).trim().slice(0, 200);
+        lines.splice(first, 1);
+        // The heading alone was a chunk before: keep its number so later ids don't shift.
+        if (lines.join("\n").trim() === "") n++;
+      }
+    }
     if (lines[0]?.startsWith("## ")) heading = lines.shift()!.slice(3).trim();
     const body = lines.join("\n").trim();
-    for (const part of splitLong(body)) chunks.push({ chunkId: `${documentId}#c${chunks.length + 1}`, location: heading, text: part });
+    for (const part of splitLong(body)) chunks.push({ chunkId: `${documentId}#c${++n}`, location: at(), text: part });
   }
   return chunks;
 }

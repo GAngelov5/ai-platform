@@ -157,6 +157,19 @@ describe("pipeline building blocks", () => {
     expect(() => parseContent(new Uint8Array([37, 80, 68, 70]), "application/pdf")).toThrow(UnsupportedTypeError);
     expect(chunkText("d", "intro\n## A\none\n## B\ntwo").map((c) => c.location)).toEqual([undefined, "A", "B"]);
   });
+
+  it("makes the document heading part of every section's location, without a chunk of its own or shifted ids", () => {
+    const chunks = chunkText("d", "# Ember go-live plan (version 2, current)\n\n## Status\nThis is current.\n## Go-live\nThe plan sets 6 April 2027.");
+    expect(chunks).toEqual([
+      { chunkId: "d#c2", location: "Ember go-live plan (version 2, current) › Status", text: "This is current." },
+      { chunkId: "d#c3", location: "Ember go-live plan (version 2, current) › Go-live", text: "The plan sets 6 April 2027." },
+    ]);
+    // A heading followed by text keeps that text in the first chunk.
+    expect(chunkText("d", "# Title\nintro\n## A\none")).toEqual([
+      { chunkId: "d#c1", location: "Title", text: "intro" },
+      { chunkId: "d#c2", location: "Title › A", text: "one" },
+    ]);
+  });
 });
 
 describe("chunking", () => {
