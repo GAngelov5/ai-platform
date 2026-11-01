@@ -5,6 +5,7 @@ import {
   auditEvents,
   conversations,
   documentContent,
+  passageEmbeddings,
   issuedEvidence,
   liveEvidence,
   messages,
@@ -126,6 +127,11 @@ const toCatalog = (r: typeof sourceDocuments.$inferSelect): CatalogRecord => ({
   indexedAt: r.indexedAt,
   tombstoned: r.tombstonedAt !== null,
 });
+
+/** db.execute returns rows directly (postgres-js) or as { rows } (PGlite). */
+function rowsOf<T>(r: unknown): T[] {
+  return (Array.isArray(r) ? r : ((r as { rows?: T[] }).rows ?? [])) as T[];
+}
 
 export function createRepositories(db: Database) {
   return {
@@ -264,10 +270,14 @@ export function createRepositories(db: Database) {
       },
       /** Takes effect in access checks immediately; derived index cleanup is asynchronous. */
       async tombstone(customerId: string, documentId: string): Promise<void> {
-        await db
-          .update(sourceDocuments)
-          .set({ tombstonedAt: new Date(), updatedAt: new Date() })
-          .where(and(eq(sourceDocuments.customerId, customerId), eq(sourceDocuments.documentId, documentId)));
+        await db.transaction(async (tx) => {
+          await tx
+            .update(sourceDocuments)
+            .set({ tombstonedAt: new Date(), updatedAt: new Date() })
+            .where(and(eq(sourceDocuments.customerId, customerId), eq(sourceDocuments.documentId, documentId)));
+          // A deleted document's vectors are deleted too, not only filtered out (ADR 0017).
+          await tx.delete(passageEmbeddings).where(and(eq(passageEmbeddings.customerId, customerId), eq(passageEmbeddings.documentId, documentId)));
+        });
       },
     },
 
@@ -304,6 +314,77 @@ export function createRepositories(db: Database) {
           .from(documentContent)
           .where(and(eq(documentContent.customerId, customerId), eq(documentContent.documentId, documentId)));
         return row;
+      },
+    },
+
+    /**
+     * Passage embeddings (ADR 0017). Every read is limited to the given document
+     * versions, which the caller has already authorized: a passage of another
+     * document, or of another version, is never returned.
+     */
+    embeddings: {
+      /** Documents (of these exact versions) that already have embeddings for this model and format. */
+      async covered(customerId: string, model: string, format: string, docs: readonly { documentId: string; version: string }[]): Promise<Set<string>> {
+        if (docs.length === 0) return new Set();
+        const rows = await db.execute<{ document_id: string }>(sql`
+          SELECT DISTINCT e.document_id
+          FROM passage_embeddings e
+          JOIN jsonb_to_recordset(${JSON.stringify(docs.map((d) => ({ document_id: d.documentId, version: d.version })))}::jsonb) AS a(document_id text, version text)
+            ON a.document_id = e.document_id AND a.version = e.version
+          WHERE e.customer_id = ${customerId} AND e.model = ${model} AND e.format = ${format}`);
+        return new Set(rowsOf<{ document_id: string }>(rows).map((r) => r.document_id));
+      },
+
+      /** Replaces a document's embeddings for this model (all its chunks, one version). */
+      async replaceDocument(
+        customerId: string,
+        documentId: string,
+        version: string,
+        model: string,
+        format: string,
+        chunks: readonly { chunkId: string; embedding: readonly number[] }[],
+      ): Promise<void> {
+        await db.transaction(async (tx) => {
+          await tx
+            .delete(passageEmbeddings)
+            .where(and(eq(passageEmbeddings.customerId, customerId), eq(passageEmbeddings.documentId, documentId), eq(passageEmbeddings.model, model)));
+          if (chunks.length === 0) return;
+          await tx.insert(passageEmbeddings).values(
+            chunks.map((c) => ({ customerId, documentId, chunkId: c.chunkId, model, version, format, dims: c.embedding.length, embedding: [...c.embedding] })),
+          );
+        });
+      },
+
+      /**
+       * Cosine similarity to the query: the `limit` nearest passages of the given
+       * documents, plus the passages named in `include` (for re-scoring word matches).
+       */
+      async nearest(
+        customerId: string,
+        model: string,
+        format: string,
+        query: readonly number[],
+        docs: readonly { documentId: string; version: string }[],
+        limit: number,
+        include: readonly string[] = [],
+      ): Promise<{ documentId: string; chunkId: string; cosine: number }[]> {
+        if (docs.length === 0 || query.length === 0) return [];
+        const q = `[${query.join(",")}]`;
+        const pairs = JSON.stringify(docs.map((d) => ({ document_id: d.documentId, version: d.version })));
+        const rows = await db.execute<{ document_id: string; chunk_id: string; cosine: number }>(sql`
+          WITH allowed AS (
+            SELECT e.document_id, e.chunk_id, e.embedding
+            FROM passage_embeddings e
+            JOIN jsonb_to_recordset(${pairs}::jsonb) AS a(document_id text, version text)
+              ON a.document_id = e.document_id AND a.version = e.version
+            WHERE e.customer_id = ${customerId} AND e.model = ${model} AND e.format = ${format} AND e.dims = ${query.length}
+          ),
+          top AS (SELECT document_id, chunk_id, embedding FROM allowed ORDER BY embedding <=> ${q}::vector LIMIT ${limit})
+          SELECT document_id, chunk_id, 1 - (embedding <=> ${q}::vector) AS cosine FROM top
+          UNION
+          SELECT document_id, chunk_id, 1 - (embedding <=> ${q}::vector) AS cosine FROM allowed
+          WHERE chunk_id IN (SELECT jsonb_array_elements_text(${JSON.stringify(include)}::jsonb))`);
+        return rowsOf<{ document_id: string; chunk_id: string; cosine: number }>(rows).map((r) => ({ documentId: r.document_id, chunkId: r.chunk_id, cosine: Number(r.cosine) }));
       },
     },
 

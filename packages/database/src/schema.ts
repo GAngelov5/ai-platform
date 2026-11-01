@@ -2,6 +2,8 @@ import { sql } from "drizzle-orm";
 import {
   bigserial,
   boolean,
+  customType,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -352,6 +354,39 @@ export const documentContent = pgTable(
     updatedAt: ts("updated_at").notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.customerId, t.documentId] })],
+);
+
+/** pgvector column without a fixed size: each embedding model has its own (nomic 768, Gemini 3072). */
+const vector = customType<{ data: number[]; driverData: string }>({
+  dataType: () => "vector",
+  toDriver: (v) => `[${v.join(",")}]`,
+  fromDriver: (v) => JSON.parse(String(v)) as number[],
+});
+
+/**
+ * Passage embeddings for hybrid retrieval (ADR 0017). One row per passage of a
+ * document version, per embedding model and embedding format. Rows go with the
+ * document's content (cascade), and rows of another version are never used.
+ */
+export const passageEmbeddings = pgTable(
+  "passage_embeddings",
+  {
+    customerId: text("customer_id").notNull(),
+    documentId: text("document_id").notNull(),
+    chunkId: text("chunk_id").notNull(),
+    model: text("model").notNull(),
+    version: text("version").notNull(),
+    /** What was embedded (title, section and text; chunker version). A new format re-embeds. */
+    format: text("format").notNull(),
+    dims: integer("dims").notNull(),
+    embedding: vector("embedding").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.customerId, t.documentId, t.chunkId, t.model] }),
+    index("passage_embeddings_doc_idx").on(t.customerId, t.model, t.documentId, t.version),
+    foreignKey({ columns: [t.customerId, t.documentId], foreignColumns: [documentContent.customerId, documentContent.documentId] }).onDelete("cascade"),
+  ],
 );
 
 export interface SourceRunReport {

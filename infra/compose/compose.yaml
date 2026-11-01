@@ -107,12 +107,15 @@ services:
     restart: "no"
 
   postgres:
-    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    # PostgreSQL 17 with pgvector (passage embeddings, ADR 0017). Debian-based: its
+    # en_US.utf8 collation differs from the earlier Alpine image's, so it uses a new
+    # volume; data moves over with pg_dump/pg_restore (docs/MANUAL-TESTING.md).
+    image: pgvector/pgvector:0.8.1-pg17@sha256:3e8b3adfd27b5707128f60956f62a793c3c9326ea8cfaf0eab7adccb5d700b21
     environment:
       POSTGRES_USER: platform
       POSTGRES_DB: platform
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
-    volumes: [postgres-data:/var/lib/postgresql/data]
+    volumes: [postgres-vector-data:/var/lib/postgresql/data]
     networks: [backend]
     security_opt: ["no-new-privileges:true"]
     healthcheck:
@@ -146,7 +149,7 @@ networks:
   backend: { internal: true }
 
 volumes:
-  postgres-data: {}
+  postgres-vector-data: {}
   valkey-data: {}
   caddy-data: {}
   caddy-config: {}

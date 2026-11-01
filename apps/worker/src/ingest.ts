@@ -1,7 +1,7 @@
 import { AirtableProvider, airtableTokenResolver, NotionProvider, notionTokenResolver, PersonalConnectionStore } from "@platform/connectors";
 import { createRepositories, type Database } from "@platform/database";
 import { SecretSealer, type PlatformConfig } from "@platform/security";
-import { adapterFor, ingestSource, type IngestionReport, type IngestionStore, type SourceConfig } from "@platform/knowledge";
+import { adapterFor, chunkText, createEmbedder, embedMissingDocuments, ingestSource, type IngestionReport, type IngestionStore, type SourceConfig } from "@platform/knowledge";
 
 /** The generic pipeline's storage, backed by the platform database. */
 export function ingestionStore(db: Database): IngestionStore {
@@ -59,4 +59,32 @@ export async function ingestAll(
   }
   if (only && !out[only] && !sources.some((s) => s.id === only)) throw new Error(`unknown source ${only}`);
   return out;
+}
+
+/**
+ * Hybrid retrieval (ADR 0017): embeds the passages of documents that have none yet
+ * for the configured model (new documents, new versions, a changed model), so the
+ * first searches don't have to. Never fails the ingestion run: search embeds
+ * whatever is still missing.
+ */
+export async function embedNewDocuments(db: Database, config: PlatformConfig, log: (msg: string, detail?: Record<string, unknown>) => void): Promise<number> {
+  const s = config.evidenceScoring;
+  if (s.mode !== "hybrid") return 0;
+  const repos = createRepositories(db);
+  const docs = (await repos.catalog.listAll(config.customerId)).filter((d) => !d.tombstoned);
+  try {
+    const n = await embedMissingDocuments(docs, {
+      index: repos.embeddings,
+      embedder: createEmbedder(s),
+      chunks: async (doc) => {
+        const row = await repos.content.get(doc.customerId, doc.documentId);
+        return row && row.version === doc.version ? chunkText(doc.documentId, row.text).map((c) => ({ ...c, documentId: doc.documentId, score: 1 })) : [];
+      },
+    });
+    if (n) log("passage embeddings updated", { documents: n, model: s.model });
+    return n;
+  } catch (err) {
+    log("passage embedding failed; search embeds what is missing", { error: (err as Error).message });
+    return 0;
+  }
 }

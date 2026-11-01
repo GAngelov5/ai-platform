@@ -22,8 +22,7 @@ import {
   loadSources,
   type ChunkLoader,
   LightRagKnowledgeAdapter,
-  OllamaEmbedder,
-  OpenAICompatibleEmbedder,
+  createEmbedder,
   PolicyEnforcingKnowledgeService,
   SemanticScoringAdapter,
   RagflowKnowledgeAdapter,
@@ -82,11 +81,14 @@ export async function createKnowledgeAdapter(config: PlatformConfig, repos: Repo
   const s = config.evidenceScoring;
   if (s.mode === "lexical") return base;
   // Backend-independent semantic evidence score (ADR 0010); hybrid also retrieves by embedding similarity.
-  const embedder =
-    s.provider === "openai-compatible"
-      ? new OpenAICompatibleEmbedder({ baseUrl: s.baseUrl, apiKey: s.apiKey, model: s.model, timeoutMs: s.timeoutMs })
-      : new OllamaEmbedder({ baseUrl: s.baseUrl, model: s.model, timeoutMs: s.timeoutMs });
-  return new SemanticScoringAdapter(base, embedder, { floor: s.floor, ceil: s.ceil, dense: s.mode === "hybrid", lexicalWeight: s.lexicalWeight });
+  // Hybrid keeps passage embeddings in the platform database (pgvector, ADR 0017).
+  return new SemanticScoringAdapter(base, createEmbedder(s), {
+    floor: s.floor,
+    ceil: s.ceil,
+    dense: s.mode === "hybrid",
+    lexicalWeight: s.lexicalWeight,
+    ...(s.mode === "hybrid" ? { index: repos.embeddings } : {}),
+  });
 }
 
 async function createRetrievalAdapter(config: PlatformConfig, repos: Repositories): Promise<KnowledgeAdapter> {

@@ -68,9 +68,12 @@ const EnvSchema = z.object({
   EMBEDDING_API_KEY: z.string().optional(),
   EMBEDDING_MODEL: z.string().min(1).default("nomic-embed-text"),
   EMBEDDING_TIMEOUT_MS: z.coerce.number().int().min(500).max(120000).default(15000),
-  /** Cosine mapped to evidence score 0 and 1. Defaults (nomic-embed-text): cosine 0.60 → score 0.6, calibrated on the eval sets for no wrong refusals (ADR 0010). */
-  SEMANTIC_SCORE_FLOOR: z.coerce.number().min(-1).max(1).default(0.15),
-  SEMANTIC_SCORE_CEIL: z.coerce.number().min(-1).max(1).default(0.9),
+  /**
+   * Cosine mapped to evidence score 0 and 1. Unset: the measured values for known
+   * models (SCORE_CALIBRATION below), else nomic-embed-text's.
+   */
+  SEMANTIC_SCORE_FLOOR: z.coerce.number().min(-1).max(1).optional(),
+  SEMANTIC_SCORE_CEIL: z.coerce.number().min(-1).max(1).optional(),
   /** Hybrid: share of word overlap in the evidence score (ADR 0010, decision 5). */
   HYBRID_LEXICAL_WEIGHT: z.coerce.number().min(0).max(1).default(0.2),
 
@@ -191,6 +194,22 @@ export interface PlatformConfig {
       };
 }
 
+/**
+ * Cosine → evidence score, measured per embedding model and mode on the eval sets
+ * (ADR 0010 Decision 4, ADR 0017): with these, the supporting document of ~91% of
+ * answerable questions scores at least 0.6. Other models: set SEMANTIC_SCORE_FLOOR/CEIL
+ * after running the calibration (docs/SEARCH-SETUP.md).
+ */
+export const SCORE_CALIBRATION: Record<string, Partial<Record<"semantic" | "hybrid", { floor: number; ceil: number }>>> = {
+  "nomic-embed-text": { semantic: { floor: 0.15, ceil: 0.9 }, hybrid: { floor: 0.35, ceil: 0.7 } },
+  "gemini-embedding-001": { hybrid: { floor: 0.5, ceil: 0.85 } },
+};
+
+export function scoreCalibration(model: string, mode: string, floor?: number, ceil?: number): { floor: number; ceil: number } {
+  const known = SCORE_CALIBRATION[model.replace(/:latest$/, "")]?.[mode as "semantic" | "hybrid"] ?? SCORE_CALIBRATION["nomic-embed-text"]!.semantic!;
+  return { floor: floor ?? known.floor, ceil: ceil ?? known.ceil };
+}
+
 const splitList = (v: string) => v.split(",").map((x) => x.trim()).filter(Boolean);
 
 /** Providers whose accounts belong to the public, not to one organisation. */
@@ -291,7 +310,8 @@ export function loadPlatformConfig(
         problems.push((err as Error).message);
       }
     }
-    if (!(e.SEMANTIC_SCORE_CEIL > e.SEMANTIC_SCORE_FLOOR)) problems.push("SEMANTIC_SCORE_CEIL must be above SEMANTIC_SCORE_FLOOR");
+    const cal = scoreCalibration(e.EMBEDDING_MODEL, e.EVIDENCE_SCORING, e.SEMANTIC_SCORE_FLOOR, e.SEMANTIC_SCORE_CEIL);
+    if (!(cal.ceil > cal.floor)) problems.push("SEMANTIC_SCORE_CEIL must be above SEMANTIC_SCORE_FLOOR");
   }
 
   // --- Model -------------------------------------------------------------------
@@ -427,8 +447,7 @@ export function loadPlatformConfig(
               (e.MODEL_API_KEY && e.MODEL_BASE_URL && new URL(e.MODEL_BASE_URL).origin === new URL(e.EMBEDDING_BASE_URL!).origin ? e.MODEL_API_KEY : undefined),
             model: e.EMBEDDING_MODEL,
             timeoutMs: e.EMBEDDING_TIMEOUT_MS,
-            floor: e.SEMANTIC_SCORE_FLOOR,
-            ceil: e.SEMANTIC_SCORE_CEIL,
+            ...scoreCalibration(e.EMBEDDING_MODEL, e.EVIDENCE_SCORING, e.SEMANTIC_SCORE_FLOOR, e.SEMANTIC_SCORE_CEIL),
             lexicalWeight: e.HYBRID_LEXICAL_WEIGHT,
           }
         : { mode: "lexical" },

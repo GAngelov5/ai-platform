@@ -1,0 +1,7 @@
+# Dev only, on top of compose.dev.yaml and compose.lightrag.yaml: publishes Ollama on
+# localhost so the API running on the host can use local embeddings (nomic-embed-text,
+# EVIDENCE_SCORING=hybrid, ADR 0017). Never in production: Ollama has no authentication.
+services:
+  ollama:
+    ports: ["127.0.0.1:11434:11434"]
+    networks: [rag, devhost]

@@ -9,7 +9,7 @@ import { fetchMcpToolPins } from "@platform/connectors";
 import { ConfigurationError, LicenceError, loadEntitlements, LOG_REDACT_PATHS, loadPlatformConfig, mcpTokenVar, redactUrl } from "@platform/security";
 import { WorkflowService } from "@platform/workflows";
 import { seedFixtures } from "./seed.js";
-import { adapterOptions, ingestAll } from "./ingest.js";
+import { adapterOptions, embedNewDocuments, ingestAll } from "./ingest.js";
 import { partitionSyncRequests } from "./sync-requests.js";
 
 const FIXTURES_ROOT = process.env.FIXTURES_ROOT ?? fileURLToPath(new URL("../../../fixtures", import.meta.url));
@@ -106,6 +106,7 @@ async function main() {
         await h.withLock(indexLock(c.customerId), async () => {
           const reports = await ingestAll(h.db, c.customerId, loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT, { includeEvalCorpus: c.ingestion.includeEvalCorpus, notion: c.ingestion.notion, airtable: c.ingestion.airtable }), (m, d) => log.info(d ?? {}, m), process.argv[3], adapterOptions(c, h.db));
           for (const [id, r] of Object.entries(reports)) log.info({ source: id, ...r }, "ingestion complete");
+          await embedNewDocuments(h.db, c, (m, d) => log.info(d ?? {}, m));
           if (c.knowledge.provider === "lightrag" && process.argv.includes("--sync")) {
             const k = c.knowledge;
             const report = await lightragSync(h.db, c.customerId, k.partitions, k.apiKey, k.timeoutMs, (m) => log.info(m));
@@ -218,6 +219,7 @@ async function main() {
                   const k = c.knowledge;
                   sync = await lightragSync(h.db, c.customerId, k.partitions, k.apiKey, k.timeoutMs, (m) => log.info(m));
                 }
+                await embedNewDocuments(h.db, c, (m, d) => log.info(d ?? {}, m));
                 log.info({ reports, sync }, "scheduled ingestion");
                 return { sources: Object.keys(reports).length, changed };
               },
@@ -247,6 +249,7 @@ async function main() {
                   const k = c.knowledge;
                   sync = await lightragSync(h.db, c.customerId, k.partitions, k.apiKey, k.timeoutMs, (m) => log.info(m));
                 }
+                await embedNewDocuments(h.db, c, (m, d) => log.info(d ?? {}, m));
                 for (const id of requested) await admin.clearSyncRequest(c.customerId, id, startedAt);
                 log.info({ requested, reports, sync }, "requested sync");
                 return { requested: requested.length, skipped: unknown };

@@ -37,11 +37,14 @@ Last updated: 2026-10-23
    - **Hybrid retrieval** (`EVIDENCE_SCORING=hybrid`, ADR 0010, Decision 5):
      supporting document in the top 5 for 95% of questions (word overlap: 65%).
      Answer gate: everything passes except the answer rate, 87–89% against 90%.
+   - **Passage embeddings in PostgreSQL (pgvector), local or external embeddings**
+     (ADR 0017, docs/SEARCH-SETUP.md). With local nomic-embed-text and Gemini
+     answers ("split" setup): 97.8% answered, refusals and leaks pass,
+     citation support 93.3% (target 95%).
    - Next:
-     - calibrate a local embedding model (nomic-embed-text) for hybrid, then
-       make hybrid the default
-     - a persistent vector store (pgvector) for larger corpora
-     - a re-ranker for the last loose paraphrases
+     - make `hybrid` the default
+     - the citation rule for sentences that link the user's term to the source's
+     - an HNSW index for large access sets
    - OCR for scans.
 3. **Stage 4 · Production hardening:** OIDC, secrets manager, image slimming
    and scanning, egress tests in CI, backup and restore drills,

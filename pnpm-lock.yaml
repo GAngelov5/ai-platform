@@ -593,8 +593,11 @@ importers:
         version: 3.4.9
     devDependencies:
       '@electric-sql/pglite':
-        specifier: ^0.5.0
+        specifier: 0.5.8
         version: 0.5.8
+      '@electric-sql/pglite-pgvector':
+        specifier: 0.0.9
+        version: 0.0.9(@electric-sql/pglite@0.5.8)
       '@types/node':
         specifier: ^24
         version: 24.19.1
@@ -781,6 +784,11 @@ packages:
 
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
+
+  '@electric-sql/pglite-pgvector@0.0.9':
+    resolution: {integrity: sha512-ue4iBW651gDQwBwn97Ekv1lYGPvXa1ymHbRbTCSL0Ib286PRDD1VDOwzwEoekZuO/wctMbTzKzlwdgDwYrqZ8A==}
+    peerDependencies:
+      '@electric-sql/pglite': 0.5.8
 
   '@electric-sql/pglite@0.5.8':
     resolution: {integrity: sha512-n9tsbUOhwx2epK1V0ZG9Ar4SHWUju04dhmzZXiSBXwBoleOvIfals33NAaWgagQVAL4Rbvx/Ptsu3P+pA09f6Q==}
@@ -3267,6 +3275,10 @@ snapshots:
   '@borewit/text-codec@0.2.2': {}
 
   '@drizzle-team/brocli@0.10.2': {}
+
+  '@electric-sql/pglite-pgvector@0.0.9(@electric-sql/pglite@0.5.8)':
+    dependencies:
+      '@electric-sql/pglite': 0.5.8
 
   '@electric-sql/pglite@0.5.8': {}
 

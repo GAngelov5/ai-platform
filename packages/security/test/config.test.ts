@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ConfigurationError, loadPlatformConfig } from "../src/index.js";
+import { ConfigurationError, loadPlatformConfig, scoreCalibration } from "../src/index.js";
 
 const prodBase = {
   APP_ENV: "production",
@@ -144,6 +144,15 @@ describe("platform configuration", () => {
     // Same host as the answer model: its key is reused.
     expect(ok.evidenceScoring).toMatchObject({ mode: "hybrid", provider: "openai-compatible", apiKey: "model-key", lexicalWeight: 0.2 });
     expect(loadPlatformConfig({ EVIDENCE_SCORING: "hybrid", EMBEDDING_BASE_URL: "http://ollama:11434" }).evidenceScoring).toMatchObject({ mode: "hybrid", provider: "ollama" });
+  });
+
+  it("uses the measured score calibration for known embedding models, unless set", () => {
+    const local = { EMBEDDING_BASE_URL: "http://ollama:11434" };
+    expect(loadPlatformConfig({ ...local, EVIDENCE_SCORING: "semantic" }).evidenceScoring).toMatchObject({ floor: 0.15, ceil: 0.9 });
+    expect(loadPlatformConfig({ ...local, EVIDENCE_SCORING: "hybrid" }).evidenceScoring).toMatchObject({ floor: 0.35, ceil: 0.7 });
+    expect(loadPlatformConfig({ ...local, EVIDENCE_SCORING: "hybrid", EMBEDDING_MODEL: "nomic-embed-text:latest" }).evidenceScoring).toMatchObject({ floor: 0.35, ceil: 0.7 });
+    expect(loadPlatformConfig({ ...local, EVIDENCE_SCORING: "hybrid", SEMANTIC_SCORE_FLOOR: "0.4" }).evidenceScoring).toMatchObject({ floor: 0.4, ceil: 0.7 });
+    expect(scoreCalibration("gemini-embedding-001", "hybrid")).toEqual({ floor: 0.5, ceil: 0.85 });
   });
 
   it("defaults to synthetic, offline development settings", () => {

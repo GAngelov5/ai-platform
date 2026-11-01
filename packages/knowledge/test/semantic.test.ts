@@ -3,7 +3,20 @@
  * Ollama HTTP API. Real embeddings are exercised by scripts/eval-retrieval.mjs.
  */
 import { describe, expect, it } from "vitest";
-import { cosine, KnowledgeBackendError, OllamaEmbedder, OpenAICompatibleEmbedder, SemanticScoringAdapter, type AdapterChunk, type CatalogDocument, type Embedder, type KnowledgeAdapter } from "../src/index.js";
+import {
+  cosine,
+  EMBEDDING_FORMAT,
+  embedMissingDocuments,
+  KnowledgeBackendError,
+  OllamaEmbedder,
+  OpenAICompatibleEmbedder,
+  SemanticScoringAdapter,
+  type AdapterChunk,
+  type CatalogDocument,
+  type Embedder,
+  type KnowledgeAdapter,
+  type PassageIndex,
+} from "../src/index.js";
 
 const chunk = (id: string, text: string, score = 0.5): AdapterChunk => ({ documentId: id, chunkId: `${id}#0`, text, score });
 
@@ -94,6 +107,60 @@ describe("SemanticScoringAdapter, hybrid", () => {
     expect(out[0]!.score).toBeCloseTo(0.8 * sem + 0.2, 5);
     expect(out[1]!.score).toBeCloseTo(0.8 * sem, 5); // a chunk found only by embeddings gets no word-overlap share
     expect(e.calls.flat()).toContain("Status June\nstatus report");
+  });
+});
+
+describe("SemanticScoringAdapter, hybrid over stored embeddings", () => {
+  const doc = (id: string, version = "1"): CatalogDocument => ({ customerId: "c", documentId: id, sourceId: "s", version, title: id, aclGroups: [], aclRevision: 1, externalRef: {}, indexedAt: new Date(0), tombstoned: false });
+  const store: Record<string, AdapterChunk[]> = {
+    travel: [chunk("travel", "per diem rates for trips", 1)],
+    leave: [chunk("leave", "annual leave days", 1)],
+  };
+  /** In-memory PassageIndex that records which documents it was asked about. */
+  function memoryIndex() {
+    const rows = new Map<string, { documentId: string; version: string; chunkId: string; model: string; format: string; embedding: readonly number[] }>();
+    const asked: string[][] = [];
+    const index: PassageIndex = {
+      covered: async (_c, model, format, docs) =>
+        new Set(docs.filter((d) => [...rows.values()].some((r) => r.documentId === d.documentId && r.version === d.version && r.model === model && r.format === format)).map((d) => d.documentId)),
+      replaceDocument: async (_c, documentId, version, model, format, chunks) => {
+        for (const [k, r] of rows) if (r.documentId === documentId && r.model === model) rows.delete(k);
+        for (const ch of chunks) rows.set(ch.chunkId, { documentId, version, chunkId: ch.chunkId, model, format, embedding: ch.embedding });
+      },
+      nearest: async (_c, model, format, q, docs, limit, include = []) => {
+        asked.push(docs.map((d) => d.documentId));
+        const ok = (r: { documentId: string; version: string; model: string; format: string }) => r.model === model && r.format === format && docs.some((d) => d.documentId === r.documentId && d.version === r.version);
+        const all = [...rows.values()].filter(ok).map((r) => ({ documentId: r.documentId, chunkId: r.chunkId, cosine: cosine(q, r.embedding) }));
+        const top = [...all].sort((a, b) => b.cosine - a.cosine).slice(0, limit);
+        return [...top, ...all.filter((r) => include.includes(r.chunkId) && !top.includes(r))];
+      },
+    };
+    return { index, rows, asked };
+  }
+  const lexicalNone: KnowledgeAdapter = { name: "lexical", search: async () => [], getDocumentChunks: async (d) => store[d.documentId] ?? [], health: async () => ({ ok: true }) };
+
+  it("embeds each authorized document once, then searches the stored embeddings", async () => {
+    const e = fakeEmbedder();
+    const { index, rows, asked } = memoryIndex();
+    const a = new SemanticScoringAdapter(lexicalNone, e, { floor: 0.2, ceil: 0.9, dense: true, index });
+    const docs = [doc("travel"), doc("leave")];
+    const out = await a.search({ query: "money for a work trip", limit: 1, documents: docs });
+    expect(out.map((c) => [c.documentId, c.text])).toEqual([["travel", "per diem rates for trips"]]);
+    expect([...rows.values()].map((r) => r.format)).toEqual([EMBEDDING_FORMAT, EMBEDDING_FORMAT]);
+    const documentEmbeds = e.calls.length;
+    await a.search({ query: "money for a work trip", limit: 1, documents: docs });
+    expect(e.calls.length).toBe(documentEmbeds + 1); // only the query: passages come from the index
+    expect(asked.every((ids) => ids.sort().join() === "leave,travel")).toBe(true); // never anything but the authorized documents
+  });
+
+  it("re-embeds a document whose version changed, and caps embedding during one search", async () => {
+    const e = fakeEmbedder();
+    const { index } = memoryIndex();
+    const chunks = async (d: CatalogDocument) => store[d.documentId] ?? [];
+    expect(await embedMissingDocuments([doc("travel"), doc("leave")], { index, embedder: e, chunks, max: 1 })).toBe(1);
+    expect(await embedMissingDocuments([doc("travel"), doc("leave")], { index, embedder: e, chunks })).toBe(1);
+    expect(await embedMissingDocuments([doc("travel"), doc("leave")], { index, embedder: e, chunks })).toBe(0);
+    expect(await embedMissingDocuments([doc("travel", "2"), doc("leave")], { index, embedder: e, chunks })).toBe(1);
   });
 });
 

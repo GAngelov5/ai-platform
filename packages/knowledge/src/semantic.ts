@@ -170,6 +170,13 @@ export class OpenAICompatibleEmbedder implements Embedder {
   }
 }
 
+/** The configured embedder (ADR 0010/0017). Shared by the API (search) and the worker (embedding new documents). */
+export function createEmbedder(o: { provider: "ollama" | "openai-compatible"; baseUrl: string; apiKey?: string; model: string; timeoutMs: number }): Embedder {
+  return o.provider === "openai-compatible"
+    ? new OpenAICompatibleEmbedder({ baseUrl: o.baseUrl, apiKey: o.apiKey, model: o.model, timeoutMs: o.timeoutMs })
+    : new OllamaEmbedder({ baseUrl: o.baseUrl, model: o.model, timeoutMs: o.timeoutMs });
+}
+
 export function cosine(a: readonly number[], b: readonly number[]): number {
   let dot = 0;
   let na = 0;
@@ -180,6 +187,66 @@ export function cosine(a: readonly number[], b: readonly number[]): number {
     nb += b[i]! * b[i]!;
   }
   return na && nb ? dot / Math.sqrt(na * nb) : 0;
+}
+
+/**
+ * Stored passage embeddings (ADR 0017; pgvector in the platform database).
+ * Every read is limited to the document versions passed in, which the caller
+ * has authorized.
+ */
+export interface PassageIndex {
+  covered(customerId: string, model: string, format: string, docs: readonly { documentId: string; version: string }[]): Promise<Set<string>>;
+  replaceDocument(
+    customerId: string,
+    documentId: string,
+    version: string,
+    model: string,
+    format: string,
+    chunks: readonly { chunkId: string; embedding: readonly number[] }[],
+  ): Promise<void>;
+  nearest(
+    customerId: string,
+    model: string,
+    format: string,
+    query: readonly number[],
+    docs: readonly { documentId: string; version: string }[],
+    limit: number,
+    include?: readonly string[],
+  ): Promise<{ documentId: string; chunkId: string; cosine: number }[]>;
+}
+
+/** What a passage embedding is made of. Bump when it changes: stored embeddings of another format are re-made. */
+export const EMBEDDING_FORMAT = "title-section-text/1";
+
+/** The text embedded for a passage: the title and section carry what the passage often doesn't repeat. */
+export const embeddingText = (title: string | undefined, c: { location?: string; text: string }) => [title, c.location, c.text].filter(Boolean).join("\n");
+
+/**
+ * Embeds and stores the passages of documents that have none yet for this model
+ * and format (new documents, new versions, or a new embedding model). Used by the
+ * worker after ingestion, and by search for anything the worker hasn't reached yet.
+ * Returns how many documents were embedded.
+ */
+export async function embedMissingDocuments(
+  docs: readonly CatalogDocument[],
+  deps: { index: PassageIndex; embedder: Embedder; chunks: (doc: CatalogDocument, signal?: AbortSignal) => Promise<AdapterChunk[]>; max?: number; signal?: AbortSignal },
+): Promise<number> {
+  if (docs.length === 0) return 0;
+  const byCustomer = new Map<string, CatalogDocument[]>();
+  for (const d of docs) byCustomer.set(d.customerId, [...(byCustomer.get(d.customerId) ?? []), d]);
+  let done = 0;
+  for (const [customerId, list] of byCustomer) {
+    const covered = await deps.index.covered(customerId, deps.embedder.model, EMBEDDING_FORMAT, list);
+    for (const doc of list) {
+      if (covered.has(doc.documentId)) continue;
+      if (deps.max !== undefined && done >= deps.max) return done;
+      const chunks = await deps.chunks(doc, deps.signal);
+      const vectors = chunks.length ? await deps.embedder.embed(chunks.map((c) => embeddingText(doc.title, c)), "document", deps.signal) : [];
+      await deps.index.replaceDocument(customerId, doc.documentId, doc.version, deps.embedder.model, EMBEDDING_FORMAT, chunks.map((c, i) => ({ chunkId: c.chunkId, embedding: vectors[i]! })));
+      done++;
+    }
+  }
+  return done;
 }
 
 export interface SemanticScoringOptions {
@@ -201,6 +268,13 @@ export interface SemanticScoringOptions {
    * barely tell "June" from "July"; word overlap does. Measured on the eval corpus: 0.2.
    */
   lexicalWeight?: number;
+  /**
+   * Hybrid only: stored embeddings. Without it, every authorized chunk is embedded in
+   * memory (fine for tests and small corpora; lost on restart).
+   */
+  index?: PassageIndex;
+  /** With an index: at most this many documents are embedded during one search (the worker does the rest). */
+  maxEmbedPerSearch?: number;
 }
 
 /**
@@ -237,6 +311,7 @@ export class SemanticScoringAdapter implements KnowledgeAdapter {
         .sort((a, b) => b.score - a.score || a.chunkId.localeCompare(b.chunkId))
         .slice(0, req.limit);
     }
+    if (this.o.index) return this.searchIndexed(req, this.o.index);
     // Hybrid: the inner adapter's matches with their word-overlap score, plus every other authorized chunk at 0.
     const lexical = await this.inner.search({ ...req, limit: 100 });
     const lexScore = new Map(lexical.map((c) => [c.chunkId, c.score]));
@@ -246,13 +321,55 @@ export class SemanticScoringAdapter implements KnowledgeAdapter {
     // The title carries what a chunk often doesn't repeat: the project, the month, the kind of document.
     const titles = new Map(req.documents.map((d) => [d.documentId, d.title]));
     const docs = await this.embedder.embed(
-      candidates.map((c) => [titles.get(c.documentId), c.location, c.text].filter(Boolean).join("\n")),
+      candidates.map((c) => embeddingText(titles.get(c.documentId), c)),
       "document",
       req.signal,
     );
     const w = this.o.lexicalWeight ?? 0.2;
     return candidates
       .map((c, i) => ({ ...c, score: (1 - w) * this.score(cosine(q!, docs[i]!)) + w * Math.max(0, Math.min(1, lexScore.get(c.chunkId) ?? 0)) }))
+      .sort((a, b) => b.score - a.score || a.chunkId.localeCompare(b.chunkId))
+      .slice(0, req.limit);
+  }
+
+  /**
+   * Hybrid over stored embeddings: word matches from the inner adapter, plus the
+   * nearest passages from the index. Both come only from `req.documents`.
+   */
+  private async searchIndexed(req: AdapterSearchRequest, index: PassageIndex): Promise<AdapterChunk[]> {
+    if (req.documents.length === 0) return [];
+    const customerId = req.documents[0]!.customerId;
+    await embedMissingDocuments(req.documents, {
+      index,
+      embedder: this.embedder,
+      chunks: (d, s) => this.inner.getDocumentChunks(d, s),
+      max: this.o.maxEmbedPerSearch ?? 25,
+      signal: req.signal,
+    });
+    const lexical = await this.inner.search({ ...req, limit: 100 });
+    const [q] = await this.embedder.embed([req.query], "query", req.signal);
+    const near = await index.nearest(customerId, this.embedder.model, EMBEDDING_FORMAT, q!, req.documents, Math.max(req.limit * 5, 30), lexical.map((c) => c.chunkId));
+    const cos = new Map(near.map((n) => [n.chunkId, n.cosine]));
+
+    // Text for passages found only by the index: read from the content store, as for the document view.
+    const byId = new Map(lexical.map((c) => [c.chunkId, c]));
+    const docsById = new Map(req.documents.map((d) => [d.documentId, d]));
+    for (const documentId of new Set(near.filter((n) => !byId.has(n.chunkId)).map((n) => n.documentId))) {
+      const doc = docsById.get(documentId);
+      if (!doc) continue;
+      for (const c of await this.inner.getDocumentChunks(doc, req.signal)) if (cos.has(c.chunkId) && !byId.has(c.chunkId)) byId.set(c.chunkId, { ...c, score: 0 });
+    }
+
+    // A word match in a document not embedded yet (more than maxEmbedPerSearch new ones): embed it here.
+    const unscored = [...byId.values()].filter((c) => !cos.has(c.chunkId));
+    if (unscored.length) {
+      const v = await this.embedder.embed(unscored.map((c) => embeddingText(docsById.get(c.documentId)?.title, c)), "document", req.signal);
+      unscored.forEach((c, i) => cos.set(c.chunkId, cosine(q!, v[i]!)));
+    }
+    const lexScore = new Map(lexical.map((c) => [c.chunkId, c.score]));
+    const w = this.o.lexicalWeight ?? 0.2;
+    return [...byId.values()]
+      .map((c) => ({ ...c, score: (1 - w) * this.score(cos.get(c.chunkId) ?? 0) + w * Math.max(0, Math.min(1, lexScore.get(c.chunkId) ?? 0)) }))
       .sort((a, b) => b.score - a.score || a.chunkId.localeCompare(b.chunkId))
       .slice(0, req.limit);
   }

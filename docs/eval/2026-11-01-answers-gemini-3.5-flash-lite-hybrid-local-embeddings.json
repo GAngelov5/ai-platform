@@ -1,0 +1,1638 @@
+{
+  "summary": {
+    "date": "2026-11-01T13:13:41.133Z",
+    "label": "gemini-3.5-flash-lite-hybrid-local-embeddings",
+    "agent": "knowledge-assistant",
+    "model": "gemini-3.5-flash-lite (openai-compatible:generativelanguage.googleapis.com)",
+    "judge": "gemini-3.7-flash",
+    "questions": 60,
+    "answerRate": 97.8,
+    "citesSupporting": 100,
+    "expectTextFound": 96.2,
+    "citationSupport": 93.3,
+    "claimsJudged": 104,
+    "abstention": 100,
+    "leakingAnswers": 0,
+    "permissionRefused": 100,
+    "bulgarianAnswers": 100,
+    "latencyMs": {
+      "p50": 1715,
+      "p95": 2757,
+      "max": 3700
+    }
+  },
+  "gates": [
+    [
+      "Citation support (judged sentence by sentence)",
+      "≥ 95%",
+      "93.3% of 104",
+      false
+    ],
+    [
+      "Unanswerable questions refused",
+      "100%",
+      "100%",
+      true
+    ],
+    [
+      "Answers leaking documents the asker can't read",
+      "0",
+      "0",
+      true
+    ],
+    [
+      "Answerable questions answered",
+      "≥ 90%",
+      "97.8%",
+      true
+    ],
+    [
+      "Answered questions cite a supporting document",
+      "≥ 90%",
+      "100%",
+      true
+    ]
+  ],
+  "rows": [
+    {
+      "id": "q01",
+      "category": "status",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What was the main blocker for Borealis in May 2026?",
+      "status": "answered",
+      "ms": 1673,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "In May 2026, the main blocker for Borealis was schema drift in the billing exports .",
+          "supported": true
+        },
+        {
+          "claim": "The primary obstacle for the project during that month was schema drift affecting billing exports .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_borealis_status-2026-05.docx"
+      ],
+      "answer": "In May 2026, the main blocker for Borealis was schema drift in the billing exports [[ev_VTrANWLP6qOUCNv-]].\n\n* The primary obstacle for the project during that month was schema drift affecting billing exports [[ev_VTrANWLP6qOUCNv-]]."
+    },
+    {
+      "id": "q02",
+      "category": "status",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What was the main blocker for Cedar in June 2026?",
+      "status": "answered",
+      "ms": 1702,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "In June 2026, the main blocker for Cedar was battery drain caused by continuous GPS tracking .",
+          "supported": true
+        },
+        {
+          "claim": "Battery drain resulting from continuous GPS tracking .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_cedar_status-2026-06.pdf"
+      ],
+      "answer": "In June 2026, the main blocker for Cedar was battery drain caused by continuous GPS tracking [[ev_blP4OtL21cCMDO_E]].\n\n* Battery drain resulting from continuous GPS tracking [[ev_blP4OtL21cCMDO_E]]."
+    },
+    {
+      "id": "q03",
+      "category": "status",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What was the main blocker for Dune in April 2026?",
+      "status": "answered",
+      "ms": 1779,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "According to the April 2026 status report (file of 2026-10-22), the primary obstacle for the Dune warehouse automation programme was a delay in safety certification for the autonomous carts .",
+          "supported": true
+        },
+        {
+          "claim": "A safety certification delay affected the autonomous carts .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_dune_status-2026-04.md"
+      ],
+      "answer": "According to the April 2026 status report (file of 2026-10-22), the primary obstacle for the Dune warehouse automation programme was a delay in safety certification for the autonomous carts [[ev_kiV6YY6eEmNI4x4r]][[ev_R-3gvncbLAJK3qkN]].\n\n* A safety certification delay affected the autonomous carts [[ev_kiV6YY6eEmNI4x4r]]."
+    },
+    {
+      "id": "q04",
+      "category": "status",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What was the main blocker for Ember in July 2026?",
+      "status": "answered",
+      "ms": 1525,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "In July 2026, the main blocker for Ember was a works council review of the performance module .",
+          "supported": true
+        },
+        {
+          "claim": "A works council review of the performance module .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_ember_status-2026-07.md"
+      ],
+      "answer": "In July 2026, the main blocker for Ember was a works council review of the performance module [[ev_wQMRQH8ggPqEi2ah]].\n\n* A works council review of the performance module [[ev_wQMRQH8ggPqEi2ah]]."
+    },
+    {
+      "id": "q05",
+      "category": "status",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What was the main blocker for Cedar in September 2026?",
+      "status": "answered",
+      "ms": 1534,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "According to the September 2026 status document (file of 2026-10-22), the main blocker for Cedar was push notification delays on older Android devices .",
+          "supported": true
+        },
+        {
+          "claim": "Push notification delays on older Android devices",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_cedar_status-2026-09.docx"
+      ],
+      "answer": "According to the September 2026 status document (file of 2026-10-22), the main blocker for Cedar was push notification delays on older Android devices [[ev_nK5yb4lcV4C5QHbS]].\n\n* Push notification delays on older Android devices [[ev_nK5yb4lcV4C5QHbS]]"
+    },
+    {
+      "id": "q06",
+      "category": "status",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What was the main blocker for Dune in August 2026?",
+      "status": "answered",
+      "ms": 1768,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "According to the August 2026 status report (file of 2026-10-22), the main blocker for Dune was spare parts lead times from the cart vendor .",
+          "supported": true
+        },
+        {
+          "claim": "Spare parts lead times from the cart vendor .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_dune_status-2026-08.html"
+      ],
+      "answer": "According to the August 2026 status report (file of 2026-10-22), the main blocker for Dune was spare parts lead times from the cart vendor [[ev_fxK-PGcPYR3rq0f-]].\n\n* Spare parts lead times from the cart vendor [[ev_fxK-PGcPYR3rq0f-]]."
+    },
+    {
+      "id": "q07",
+      "category": "decision",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What did the Borealis steering committee decide about data retention?",
+      "status": "answered",
+      "ms": 1744,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": false,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The Borealis steering committee decided to retain raw billing events for 400 days and aggregates for seven years (steering minutes 1, file of 2026-10-22) .",
+          "supported": true
+        },
+        {
+          "claim": "Raw billing events are kept for 400 days .",
+          "supported": true
+        },
+        {
+          "claim": "Aggregates are kept for seven years .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_borealis_steering-minutes-1.docx"
+      ],
+      "answer": "The Borealis steering committee decided to retain raw billing events for 400 days and aggregates for seven years (steering minutes 1, file of 2026-10-22) [[ev_Vu-G8B0ZrIux-g13]].\n\n* Raw billing events are kept for 400 days [[ev_Vu-G8B0ZrIux-g13]].\n* Aggregates are kept for seven years [[ev_Vu-G8B0ZrIux-g13]]."
+    },
+    {
+      "id": "q08",
+      "category": "decision",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What did the Cedar steering committee decide about release cadence?",
+      "status": "answered",
+      "ms": 1758,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The Cedar steering committee decided to ship mobile releases every three weeks (steering minutes 3, file of 2026-10-22) .",
+          "supported": true
+        },
+        {
+          "claim": "Mobile releases will be shipped every three weeks .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_cedar_steering-minutes-3.docx"
+      ],
+      "answer": "The Cedar steering committee decided to ship mobile releases every three weeks (steering minutes 3, file of 2026-10-22) [[ev_C_VBqmCoLU9HP5aQ]].\n\n* Mobile releases will be shipped every three weeks [[ev_C_VBqmCoLU9HP5aQ]]."
+    },
+    {
+      "id": "q09",
+      "category": "decision",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What did the Dune steering committee decide about pilot scope?",
+      "status": "answered",
+      "ms": 1715,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The Dune steering committee decided to limit the pilot to the small-parts zone for the first eight weeks (steering minutes 2, version of 2026-10-22) .",
+          "supported": true
+        },
+        {
+          "claim": "Limit the pilot to the small-parts zone for the first eight weeks .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_dune_steering-minutes-2.docx"
+      ],
+      "answer": "The Dune steering committee decided to limit the pilot to the small-parts zone for the first eight weeks (steering minutes 2, version of 2026-10-22) [[ev_B4VPNc899sCkutXA]].\n\n* Limit the pilot to the small-parts zone for the first eight weeks [[ev_B4VPNc899sCkutXA]]."
+    },
+    {
+      "id": "q10",
+      "category": "decision",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What did the Ember steering committee decide about mobile access?",
+      "status": "answered",
+      "ms": 1980,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The Ember steering committee decided to allow mobile access to payslips with step-up authentication (version from file of 2026-10-22) .",
+          "supported": true
+        },
+        {
+          "claim": "The committee decided to allow mobile access to payslips, provided that step-up authentication is used .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_ember_steering-minutes-3.docx"
+      ],
+      "answer": "The Ember steering committee decided to allow mobile access to payslips with step-up authentication (version from file of 2026-10-22) [[ev_slTW5ukZpdKifPVc]].\n\n* The committee decided to allow mobile access to payslips, provided that step-up authentication is used [[ev_slTW5ukZpdKifPVc]]."
+    },
+    {
+      "id": "q11",
+      "category": "spec",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "How does Cedar handle push notifications?",
+      "status": "answered",
+      "ms": 1591,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "Cedar uses a managed push gateway that batches notifications per technician .",
+          "supported": true
+        },
+        {
+          "claim": "Cedar utilizes a managed push gateway .",
+          "supported": true
+        },
+        {
+          "claim": "Notifications are batched per technician .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_cedar_spec-push-notifications.pdf"
+      ],
+      "answer": "Cedar uses a managed push gateway that batches notifications per technician [[ev_25P6v6EgpCzkfCXY]].\n\n* Cedar utilizes a managed push gateway [[ev_25P6v6EgpCzkfCXY]].\n* Notifications are batched per technician [[ev_25P6v6EgpCzkfCXY]]."
+    },
+    {
+      "id": "q12",
+      "category": "spec",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "How does Dune handle network?",
+      "status": "answered",
+      "ms": 1724,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "Dune requires a private 5G network for cart telemetry .",
+          "supported": true
+        },
+        {
+          "claim": "Dune technical specifications state that a private 5G network is required for cart telemetry .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_dune_spec-network.pdf"
+      ],
+      "answer": "Dune requires a private 5G network for cart telemetry [[ev_kfswKIxHxFvIfVWA]].\n\n* Dune technical specifications state that a private 5G network is required for cart telemetry [[ev_kfswKIxHxFvIfVWA]]."
+    },
+    {
+      "id": "q13",
+      "category": "spec",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "How does Ember handle audit?",
+      "status": "answered",
+      "ms": 1566,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "Ember maintains an immutable audit trail for all modifications made to employee records (as of the 2026-10-22 technical specification) .",
+          "supported": true
+        },
+        {
+          "claim": "Ember keeps an immutable audit trail of every change to employee records .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_ember_spec-audit.pdf"
+      ],
+      "answer": "Ember maintains an immutable audit trail for all modifications made to employee records (as of the 2026-10-22 technical specification) [[ev_KnoZ8gSVcOj8JK4f]].\n\n* Ember keeps an immutable audit trail of every change to employee records [[ev_KnoZ8gSVcOj8JK4f]]."
+    },
+    {
+      "id": "q14",
+      "category": "conflicting-versions",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What is the current planned go-live date for Borealis?",
+      "status": "answered",
+      "ms": 1739,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The current plan sets the Borealis go-live for 1 February 2027 .",
+          "supported": true
+        },
+        {
+          "claim": "According to the current approved plan (version 2, dated 22 October 2026), the go-live date is 1 February 2027 .",
+          "supported": true
+        },
+        {
+          "claim": "Version 1 of the plan previously scheduled the go-live for 16 November 2026 .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_borealis_go-live-plan-v2.md",
+        "eval-corpus:projects_borealis_go-live-plan-v1.md"
+      ],
+      "answer": "The current plan sets the Borealis go-live for 1 February 2027 [[ev_7ndzcM1MRQ4O7L36]].\n\n* According to the current approved plan (version 2, dated 22 October 2026), the go-live date is 1 February 2027 [[ev_tvqn5pKQbUF77a-7]][[ev_7ndzcM1MRQ4O7L36]].\n* Version 1 of the plan previously scheduled the go-live for 16 November 2026 [[ev_3IObIYwaxqoBJ7wd]]."
+    },
+    {
+      "id": "q15",
+      "category": "conflicting-versions",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What is the current planned go-live date for Cedar?",
+      "status": "answered",
+      "ms": 1834,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The current approved plan (version 2, dated 22 October 2026) sets the Cedar go-live for 10 March 2027 , .",
+          "supported": true
+        },
+        {
+          "claim": "This supersedes version 1, which had planned the go-live for 2 December 2026 , .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_cedar_go-live-plan-v2.md",
+        "eval-corpus:projects_cedar_go-live-plan-v1.md"
+      ],
+      "answer": "The current planned go-live date for Cedar is 10 March 2027 (according to the version 2 go-live plan from October 2026).\n\n* The current approved plan (version 2, dated 22 October 2026) sets the Cedar go-live for 10 March 2027 [[ev_P5u3jJpqfsW49zL8]], [[ev_tIQ9obtTaqp_7ESV]].\n* This supersedes version 1, which had planned the go-live for 2 December 2026 [[ev_RGNfKIB5VD7U5sR-]], [[ev_JNwh11B5kiLMuz16]]."
+    },
+    {
+      "id": "q16",
+      "category": "conflicting-versions",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What is the current planned go-live date for Dune?",
+      "status": "answered",
+      "ms": 1760,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The current planned go-live date for Dune is 28 April 2027 (version 2 of the go-live plan, dated 22 October 2026) .",
+          "supported": true
+        },
+        {
+          "claim": "The current approved plan sets the Dune go-live date to 28 April 2027 .",
+          "supported": false
+        },
+        {
+          "claim": "This supersedes version 1, which previously planned the go-live for 15 January 2027 .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_dune_go-live-plan-v2.md",
+        "eval-corpus:projects_dune_go-live-plan-v1.md"
+      ],
+      "answer": "The current planned go-live date for Dune is 28 April 2027 (version 2 of the go-live plan, dated 22 October 2026) [[ev_GH5gOqxDbNnLXZrD]].\n\n* The current approved plan sets the Dune go-live date to 28 April 2027 [[ev_GH5gOqxDbNnLXZrD]].\n* This supersedes version 1, which previously planned the go-live for 15 January 2027 [[ev_P3DnjeNTm-WQU9id]]."
+    },
+    {
+      "id": "q17",
+      "category": "conflicting-versions",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What is the current planned go-live date for Ember?",
+      "status": "answered",
+      "ms": 1759,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The current planned go-live date for Ember is 6 April 2027 .",
+          "supported": true
+        },
+        {
+          "claim": "According to the current approved plan (version 2, dated 2026-10-22), the go-live is set for 6 April 2027 .",
+          "supported": true
+        },
+        {
+          "claim": "This supersedes version 1, which previously planned the go-live for 5 January 2027 .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_ember_go-live-plan-v2.md",
+        "eval-corpus:projects_ember_go-live-plan-v1.md"
+      ],
+      "answer": "The current planned go-live date for Ember is 6 April 2027 [[ev_SWsgfLDyzqKwmGvy]].\n\n- According to the current approved plan (version 2, dated 2026-10-22), the go-live is set for 6 April 2027 [[ev_SWsgfLDyzqKwmGvy]][[ev_kErg67Woei8SzomI]].\n- This supersedes version 1, which previously planned the go-live for 5 January 2027 [[ev_AdRjAlN7VMFIIQM-]][[ev_A8VTOz0UeiqOxNm5]]."
+    },
+    {
+      "id": "q18",
+      "category": "policy",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What is the daily per diem for business travel within the EU?",
+      "status": "answered",
+      "ms": 1840,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The daily per diem for business travel within the EU is EUR 45, according to the travel policy version of 2026-10-22 .",
+          "supported": true
+        },
+        {
+          "claim": "The daily per diem rate within the EU is EUR 45 .",
+          "supported": true
+        },
+        {
+          "claim": "Hotels must be booked through the travel desk .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:policies_travel-policy.md"
+      ],
+      "answer": "The daily per diem for business travel within the EU is EUR 45, according to the travel policy version of 2026-10-22 [[ev_i8y1EGC4POPN-sny]].\n\n* The daily per diem rate within the EU is EUR 45 [[ev_i8y1EGC4POPN-sny]].\n* Hotels must be booked through the travel desk [[ev_i8y1EGC4POPN-sny]]."
+    },
+    {
+      "id": "q19",
+      "category": "policy",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "How often must passwords for privileged accounts be rotated?",
+      "status": "answered",
+      "ms": 1658,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "Passwords for privileged accounts must be rotated every 180 days (password policy, version of 2026-10-22) .",
+          "supported": true
+        },
+        {
+          "claim": "Passwords for privileged accounts must be rotated every 180 days .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:policies_password-policy.pdf"
+      ],
+      "answer": "Passwords for privileged accounts must be rotated every 180 days (password policy, version of 2026-10-22) [[ev_Ivutf_X9JTZVLSKp]].\n\n* Passwords for privileged accounts must be rotated every 180 days [[ev_Ivutf_X9JTZVLSKp]]."
+    },
+    {
+      "id": "q20",
+      "category": "policy",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "Within how many hours must a suspected security incident be reported?",
+      "status": "answered",
+      "ms": 1783,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "A suspected security incident must be reported within 4 hours of discovery (file of 2026-10-22) .",
+          "supported": true
+        },
+        {
+          "claim": "Report suspected security incidents to the security office within 4 hours of discovery .",
+          "supported": true
+        },
+        {
+          "claim": "Use the incident hotline outside office hours .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:policies_incident-reporting.pdf"
+      ],
+      "answer": "A suspected security incident must be reported within 4 hours of discovery (file of 2026-10-22) [[ev_ZhwGbSBtyFR-9sT0]].\n\n* Report suspected security incidents to the security office within 4 hours of discovery [[ev_ZhwGbSBtyFR-9sT0]].\n* Use the incident hotline outside office hours [[ev_ZhwGbSBtyFR-9sT0]]."
+    },
+    {
+      "id": "q21",
+      "category": "policy",
+      "type": "answerable",
+      "principal": "bob",
+      "question": "How many days of annual leave do full-time employees receive?",
+      "status": "answered",
+      "ms": 1452,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "Full-time employees receive 25 days of annual leave per calendar year (version of 2026-10-22) .",
+          "supported": true
+        },
+        {
+          "claim": "Full-time employees are entitled to 25 days of annual leave per calendar year .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:policies_leave-policy.docx"
+      ],
+      "answer": "Full-time employees receive 25 days of annual leave per calendar year (version of 2026-10-22) [[ev_GFwSQ1rrREZ-nMR2]].\n\n* Full-time employees are entitled to 25 days of annual leave per calendar year [[ev_GFwSQ1rrREZ-nMR2]]."
+    },
+    {
+      "id": "q22",
+      "category": "policy",
+      "type": "answerable",
+      "principal": "bob",
+      "question": "What is the annual training budget per employee?",
+      "status": "answered",
+      "ms": 1811,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "Each employee has an annual training budget of EUR 1,200 according to the training policy (version of 2026-10-22) .",
+          "supported": true
+        },
+        {
+          "claim": "The annual training budget per employee is EUR 1,200 .",
+          "supported": true
+        },
+        {
+          "claim": "Any courses exceeding this budget require director approval .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:policies_training-policy.html"
+      ],
+      "answer": "Each employee has an annual training budget of EUR 1,200 according to the training policy (version of 2026-10-22) [[ev_D3Ad5kfUWu8wJjSm]].\n\n* The annual training budget per employee is EUR 1,200 [[ev_D3Ad5kfUWu8wJjSm]].\n* Any courses exceeding this budget require director approval [[ev_ifWdPTodXwlt7zjD]]."
+    },
+    {
+      "id": "q23",
+      "category": "policy",
+      "type": "answerable",
+      "principal": "bob",
+      "question": "How many days per week may employees work remotely?",
+      "status": "answered",
+      "ms": 1499,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "Employees may work remotely up to three days per week (file of 2026-10-22) .",
+          "supported": true
+        },
+        {
+          "claim": "Employees are permitted to work remotely for a maximum of three days per week .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:policies_remote-work-policy.md"
+      ],
+      "answer": "Employees may work remotely up to three days per week (file of 2026-10-22) [[ev__acxxmZN6zzu5u5P]].\n\n* Employees are permitted to work remotely for a maximum of three days per week [[ev__acxxmZN6zzu5u5P]]."
+    },
+    {
+      "id": "q24",
+      "category": "restricted",
+      "type": "answerable",
+      "principal": "carol",
+      "question": "What is the total value of the Borealis contract with Kestrel Systems?",
+      "status": "answered",
+      "ms": 1581,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The total value of the Borealis contract with Kestrel Systems is EUR 1.2 million .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:finance-legal_borealis-contract.pdf"
+      ],
+      "answer": "The Borealis contract with Kestrel Systems has a total value of EUR 1.2 million (as of the 2026-10-22 document file).\n\n* The total value of the Borealis contract with Kestrel Systems is EUR 1.2 million [[ev_92LE3nrq0igFrTcN]]."
+    },
+    {
+      "id": "q25",
+      "category": "restricted",
+      "type": "answerable",
+      "principal": "carol",
+      "question": "What is the approved Dune budget for 2027?",
+      "status": "answered",
+      "ms": 1712,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The approved Dune budget for 2027 is EUR 1100 thousand (file of 2026-10-22) .",
+          "supported": true
+        },
+        {
+          "claim": "The budget amount is EUR 1100 thousand .",
+          "supported": true
+        },
+        {
+          "claim": "Contingency is 10% of the budget .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:finance-legal_dune-budget.docx"
+      ],
+      "answer": "The approved Dune budget for 2027 is EUR 1100 thousand (file of 2026-10-22) [[ev_nEVn82cmqa0Ta87p]].\n\n* The budget amount is EUR 1100 thousand [[ev_nEVn82cmqa0Ta87p]].\n* Contingency is 10% of the budget [[ev_D4Vx5A03tRjDXugg]]."
+    },
+    {
+      "id": "q26",
+      "category": "restricted",
+      "type": "answerable",
+      "principal": "carol",
+      "question": "What liability cap did the legal review accept for Harbor HR Cloud?",
+      "status": "answered",
+      "ms": 1612,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The legal review accepted a liability cap of 4 times the annual fee for Harbor HR Cloud (as of October 2026) .",
+          "supported": true
+        },
+        {
+          "claim": "Legal review findings: accepted a liability cap set at 4 times the annual fee .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:finance-legal_ember-legal-review.md"
+      ],
+      "answer": "The legal review accepted a liability cap of 4 times the annual fee for Harbor HR Cloud (as of October 2026) [[ev_lZsVZ5AVA1QR0_Jc]].\n\n* Legal review findings: accepted a liability cap set at 4 times the annual fee [[ev_lZsVZ5AVA1QR0_Jc]]."
+    },
+    {
+      "id": "q27",
+      "category": "unanswerable",
+      "type": "unanswerable",
+      "principal": "alice",
+      "question": "What is the Borealis marketing budget for 2029?",
+      "status": "insufficient_evidence",
+      "ms": 1622,
+      "answered": false,
+      "citesSupporting": null,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [],
+      "citedDocs": [],
+      "answer": "I could not find enough authorized evidence to answer that. I will not guess. Try rephrasing, or ask someone with access to the relevant project sources."
+    },
+    {
+      "id": "q28",
+      "category": "unanswerable",
+      "type": "unanswerable",
+      "principal": "alice",
+      "question": "Which football club sponsors the Cedar app?",
+      "status": "insufficient_evidence",
+      "ms": 2209,
+      "answered": false,
+      "citesSupporting": null,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [],
+      "citedDocs": [],
+      "answer": "I could not find enough authorized evidence to answer that. I will not guess. Try rephrasing, or ask someone with access to the relevant project sources."
+    },
+    {
+      "id": "q29",
+      "category": "unanswerable",
+      "type": "unanswerable",
+      "principal": "alice",
+      "question": "What is the per diem for travel to the Moon?",
+      "status": "insufficient_evidence",
+      "ms": 1494,
+      "answered": false,
+      "citesSupporting": null,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [],
+      "citedDocs": [],
+      "answer": "I could not find enough authorized evidence to answer that. I will not guess. Try rephrasing, or ask someone with access to the relevant project sources."
+    },
+    {
+      "id": "q30",
+      "category": "unanswerable",
+      "type": "unanswerable",
+      "principal": "alice",
+      "question": "Who won the Dune hackathon in 2025?",
+      "status": "insufficient_evidence",
+      "ms": 1544,
+      "answered": false,
+      "citesSupporting": null,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [],
+      "citedDocs": [],
+      "answer": "I could not find enough authorized evidence to answer that. I will not guess. Try rephrasing, or ask someone with access to the relevant project sources."
+    },
+    {
+      "id": "q31",
+      "category": "unanswerable",
+      "type": "unanswerable",
+      "principal": "alice",
+      "question": "What is the Ember share price target?",
+      "status": "insufficient_evidence",
+      "ms": 1332,
+      "answered": false,
+      "citesSupporting": null,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [],
+      "citedDocs": [],
+      "answer": "I could not find enough authorized evidence to answer that. I will not guess. Try rephrasing, or ask someone with access to the relevant project sources."
+    },
+    {
+      "id": "q32",
+      "category": "permission",
+      "type": "permission",
+      "principal": "bob",
+      "question": "What was the main blocker for Borealis in May 2026?",
+      "status": "insufficient_evidence",
+      "ms": 2286,
+      "answered": false,
+      "citesSupporting": null,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [],
+      "citedDocs": [],
+      "answer": "I could not find enough authorized evidence to answer that. I will not guess. Try rephrasing, or ask someone with access to the relevant project sources."
+    },
+    {
+      "id": "q33",
+      "category": "permission",
+      "type": "permission",
+      "principal": "alice",
+      "question": "What is the total value of the Borealis contract with Kestrel Systems?",
+      "status": "insufficient_evidence",
+      "ms": 1222,
+      "answered": false,
+      "citesSupporting": null,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [],
+      "citedDocs": [],
+      "answer": "I could not find enough authorized evidence to answer that. I will not guess. Try rephrasing, or ask someone with access to the relevant project sources."
+    },
+    {
+      "id": "q34",
+      "category": "permission",
+      "type": "permission",
+      "principal": "bob",
+      "question": "What is the approved Dune budget for 2027?",
+      "status": "insufficient_evidence",
+      "ms": 1339,
+      "answered": false,
+      "citesSupporting": null,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [],
+      "citedDocs": [],
+      "answer": "I could not find enough authorized evidence to answer that. I will not guess. Try rephrasing, or ask someone with access to the relevant project sources."
+    },
+    {
+      "id": "h01",
+      "category": "paraphrase",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "Why was the analytics platform held back in May 2026?",
+      "status": "answered",
+      "ms": 2757,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "In May 2026, the analytics data platform (Borealis) was held back due to a main blocker involving schema drift in the billing exports .",
+          "supported": true
+        },
+        {
+          "claim": "In May 2026, overall progress for Borealis reached 50 percent .",
+          "supported": true
+        },
+        {
+          "claim": "The primary blocker during that month was schema drift in the billing exports .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_borealis_status-2026-05.docx"
+      ],
+      "answer": "In May 2026, the analytics data platform (Borealis) was held back due to a main blocker involving schema drift in the billing exports [[ev_kJCTxrNezNHhqcGT]][[ev_eIFqeMTnUX-SRnY5]].\n\n* In May 2026, overall progress for Borealis reached 50 percent [[ev_kJCTxrNezNHhqcGT]].\n* The primary blocker during that month was schema drift in the billing exports [[ev_eIFqeMTnUX-SRnY5]]."
+    },
+    {
+      "id": "h02",
+      "category": "paraphrase",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What slowed down the warehouse robots in April 2026?",
+      "status": "answered",
+      "ms": 2460,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "According to the April 2026 Dune status report (file of 2026-10-22), the main blocker for the warehouse automation programme was a safety certification delay for the autonomous carts .",
+          "supported": false
+        },
+        {
+          "claim": "A safety certification delay for the autonomous carts slowed down the programme .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_dune_status-2026-04.md"
+      ],
+      "answer": "According to the April 2026 Dune status report (file of 2026-10-22), the main blocker for the warehouse automation programme was a safety certification delay for the autonomous carts [[ev_LbT2Zl8VO9CFY5N7]].\n\n* A safety certification delay for the autonomous carts slowed down the programme [[ev_LbT2Zl8VO9CFY5N7]]."
+    },
+    {
+      "id": "h03",
+      "category": "paraphrase",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "When is the HR self-service launch now expected?",
+      "status": "insufficient_evidence",
+      "ms": 3141,
+      "answered": false,
+      "citesSupporting": false,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [],
+      "citedDocs": [],
+      "answer": "I could not find enough authorized evidence to answer that. I will not guess. Try rephrasing, or ask someone with access to the relevant project sources."
+    },
+    {
+      "id": "h04",
+      "category": "paraphrase",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "When will the field service app be launched?",
+      "status": "answered",
+      "ms": 3700,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The field service mobile app (Cedar) is scheduled to go live on 10 March 2027 .",
+          "supported": false
+        },
+        {
+          "claim": "The current go-live plan sets the release date for 10 March 2027 .",
+          "supported": true
+        },
+        {
+          "claim": "An earlier plan (version 1, superseded) had previously scheduled the go-live for 2 December 2026 .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_cedar_go-live-plan-v2.md",
+        "eval-corpus:projects_cedar_go-live-plan-v1.md"
+      ],
+      "answer": "The field service mobile app (Cedar) is scheduled to go live on 10 March 2027 [[ev_vmA2yX4nrFS6S6_a]].\n\n* The current go-live plan sets the release date for 10 March 2027 [[ev_vmA2yX4nrFS6S6_a]].\n* An earlier plan (version 1, superseded) had previously scheduled the go-live for 2 December 2026 [[ev_1Bsyllik3-XTE4rZ]]."
+    },
+    {
+      "id": "h05",
+      "category": "paraphrase",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "How long can technicians keep working without a connection in the mobile app?",
+      "status": "answered",
+      "ms": 1753,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "Technicians can keep working in full offline mode in the mobile app for up to 72 hours, as decided by the Cedar steering committee in October 2026 .",
+          "supported": false
+        },
+        {
+          "claim": "Technicians are supported in full offline mode for up to 72 hours .",
+          "supported": false
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_cedar_steering-minutes-1.docx"
+      ],
+      "answer": "Technicians can keep working in full offline mode in the mobile app for up to 72 hours, as decided by the Cedar steering committee in October 2026 [[ev_HVtmxJ0Qe-gO_OkZ]].\n\n* Technicians are supported in full offline mode for up to 72 hours [[ev_HVtmxJ0Qe-gO_OkZ]]."
+    },
+    {
+      "id": "h06",
+      "category": "paraphrase",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "How long are raw billing records retained on the analytics platform?",
+      "status": "answered",
+      "ms": 1655,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "Raw billing records are retained on the analytics platform for 400 days according to the Borealis steering committee decision .",
+          "supported": false
+        },
+        {
+          "claim": "Raw billing events are kept for 400 days .",
+          "supported": true
+        },
+        {
+          "claim": "Aggregates are kept for seven years .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_borealis_steering-minutes-1.docx"
+      ],
+      "answer": "Raw billing records are retained on the analytics platform for 400 days according to the Borealis steering committee decision [[ev_9_BJ0IbamOYL-TcB]].\n\n* Raw billing events are kept for 400 days [[ev_9_BJ0IbamOYL-TcB]].\n* Aggregates are kept for seven years [[ev_9_BJ0IbamOYL-TcB]]."
+    },
+    {
+      "id": "h07",
+      "category": "paraphrase",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "How frequently are the encryption keys changed for the analytics data?",
+      "status": "answered",
+      "ms": 1801,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "Encryption keys are rotated every 90 days by the key management service (as of the 2026-10-22 specification) .",
+          "supported": true
+        },
+        {
+          "claim": "Encryption keys are rotated every 90 days .",
+          "supported": true
+        },
+        {
+          "claim": "The rotation is handled by the key management service .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_borealis_spec-encryption.pdf"
+      ],
+      "answer": "Encryption keys are rotated every 90 days by the key management service (as of the 2026-10-22 specification) [[ev_XAvlRjYTyoLmsDX4]].\n\n* Encryption keys are rotated every 90 days [[ev_XAvlRjYTyoLmsDX4]].\n* The rotation is handled by the key management service [[ev_XAvlRjYTyoLmsDX4]]."
+    },
+    {
+      "id": "h08",
+      "category": "paraphrase",
+      "type": "answerable",
+      "principal": "bob",
+      "question": "How much money do I get per day when travelling in Europe for work?",
+      "status": "answered",
+      "ms": 1580,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The daily allowance for business travel within the EU is EUR 45 (travel policy, file of 2026-10-22) .",
+          "supported": true
+        },
+        {
+          "claim": "The daily per diem for business travel within the EU is EUR 45 .",
+          "supported": true
+        },
+        {
+          "claim": "Hotels must be booked through the travel desk .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:policies_travel-policy.md"
+      ],
+      "answer": "The daily allowance for business travel within the EU is EUR 45 (travel policy, file of 2026-10-22) [[ev_AFMDvNUrpG1x0-Ui]].\n\n* The daily per diem for business travel within the EU is EUR 45 [[ev_AFMDvNUrpG1x0-Ui]].\n* Hotels must be booked through the travel desk [[ev_AFMDvNUrpG1x0-Ui]]."
+    },
+    {
+      "id": "h09",
+      "category": "paraphrase",
+      "type": "answerable",
+      "principal": "bob",
+      "question": "How long do I have to hand in receipts to get reimbursed?",
+      "status": "answered",
+      "ms": 1726,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "You must submit your expense claims within 60 days of the expense (file of 2026-10-22) .",
+          "supported": true
+        },
+        {
+          "claim": "Submit expense claims within 60 days of the expense (file of 2026-10-22) .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:policies_expense-policy.html"
+      ],
+      "answer": "You must submit your expense claims within 60 days of the expense (file of 2026-10-22) [[ev_KUcKwJB8JLQjhuF_]].\n\n* Submit expense claims within 60 days of the expense (file of 2026-10-22) [[ev_KUcKwJB8JLQjhuF_]]."
+    },
+    {
+      "id": "h10",
+      "category": "paraphrase",
+      "type": "answerable",
+      "principal": "bob",
+      "question": "Can I keep confidential company data on my own phone?",
+      "status": "answered",
+      "ms": 1471,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "Restricted data is prohibited from being stored on personal devices .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:policies_data-classification.docx"
+      ],
+      "answer": "Restricted company data may not be stored on personal devices, according to the data classification document (file of 2026-10-22).\n\n* Restricted data is prohibited from being stored on personal devices [[ev_dgmKhNqAVfbQ2ORY]]."
+    },
+    {
+      "id": "h11",
+      "category": "paraphrase",
+      "type": "answerable",
+      "principal": "bob",
+      "question": "How much does the company pay towards my gym?",
+      "status": "answered",
+      "ms": 1419,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The company contribution is EUR 30 per month for a gym membership .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:policies_wellbeing-programme.docx"
+      ],
+      "answer": "The company contributes EUR 30 per month towards your gym membership (as of the 2026-10-22 document version).\n\n* The company contribution is EUR 30 per month for a gym membership [[ev_x27cuJ5eV56NPB8I]]."
+    },
+    {
+      "id": "h12",
+      "category": "paraphrase",
+      "type": "answerable",
+      "principal": "bob",
+      "question": "What should I do if I am ill and cannot come to work?",
+      "status": "answered",
+      "ms": 1650,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "Notify your manager before 9:00 on the first day of sickness .",
+          "supported": true
+        },
+        {
+          "claim": "Provide a medical certificate if you are ill for more than three consecutive days .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:policies_sick-leave-policy.docx"
+      ],
+      "answer": "According to the sick leave policy (file of 2026-10-22), you need to take the following steps if you are ill:\n\n* Notify your manager before 9:00 on the first day of sickness [[ev_Ekx-3qxJVIYvy0U9]].\n* Provide a medical certificate if you are ill for more than three consecutive days [[ev_jY-Dn958AM_CeePp]]."
+    },
+    {
+      "id": "h13",
+      "category": "paraphrase",
+      "type": "answerable",
+      "principal": "bob",
+      "question": "How many offers do I need before buying something expensive?",
+      "status": "answered",
+      "ms": 1543,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "Purchases above EUR 10,000 require three competing quotes (procurement policy, file of 2026-10-22) .",
+          "supported": true
+        },
+        {
+          "claim": "Purchases above EUR 10,000 require three competing quotes .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:policies_procurement-policy.html"
+      ],
+      "answer": "Purchases above EUR 10,000 require three competing quotes (procurement policy, file of 2026-10-22) [[ev_BZ0s02d4UxLKu_i5]].\n\n* Purchases above EUR 10,000 require three competing quotes [[ev_BZ0s02d4UxLKu_i5]]."
+    },
+    {
+      "id": "h14",
+      "category": "multi-document",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "How did the main Borealis blocker change between May and June 2026?",
+      "status": "answered",
+      "ms": 1769,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The main Borealis blocker shifted from schema drift in the billing exports in May 2026 to an unresolved single sign-on integration with the reporting tool in June 2026 .",
+          "supported": true
+        },
+        {
+          "claim": "In May 2026, the main blocker was schema drift in the billing exports .",
+          "supported": true
+        },
+        {
+          "claim": "In June 2026, the main blocker changed to an unresolved single sign-on integration with the reporting tool .",
+          "supported": false
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_borealis_status-2026-05.docx",
+        "eval-corpus:projects_borealis_status-2026-06.pdf"
+      ],
+      "answer": "The main Borealis blocker shifted from schema drift in the billing exports in May 2026 to an unresolved single sign-on integration with the reporting tool in June 2026 [[ev_m647DYTbE29k1cw5]][[ev_ockIdI16_-X6Dqtr]].\n\n* In May 2026, the main blocker was schema drift in the billing exports [[ev_m647DYTbE29k1cw5]].\n* In June 2026, the main blocker changed to an unresolved single sign-on integration with the reporting tool [[ev_ockIdI16_-X6Dqtr]]."
+    },
+    {
+      "id": "h15",
+      "category": "multi-document",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "Compare the original and the current go-live date for Dune.",
+      "status": "answered",
+      "ms": 1956,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The original go-live date (version 1) was planned for 15 January 2027 .",
+          "supported": true
+        },
+        {
+          "claim": "The current go-live date (version 2, from 22 October 2026) is set for 28 April 2027 .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_dune_go-live-plan-v1.md",
+        "eval-corpus:projects_dune_go-live-plan-v2.md"
+      ],
+      "answer": "The go-live date for Dune was rescheduled from its original plan to a later date.\n\n* The original go-live date (version 1) was planned for 15 January 2027 [[ev_F6TFm5JqHsU7n-eC]].\n* The current go-live date (version 2, from 22 October 2026) is set for 28 April 2027 [[ev_kK_wXnt77RB3DcUn]]."
+    },
+    {
+      "id": "h16",
+      "category": "multi-document",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "What did the Cedar steering committee decide about photo uploads, and how are Cedar maps refreshed?",
+      "status": "answered",
+      "ms": 2511,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The Cedar steering committee decided to compress photos on the device prior to upload .",
+          "supported": true
+        },
+        {
+          "claim": "Cedar renders maps from cached vector tiles that are refreshed nightly .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:projects_cedar_steering-minutes-4.docx",
+        "eval-corpus:projects_cedar_spec-maps.pdf"
+      ],
+      "answer": "The Cedar steering committee decided to compress photos on the device before upload, and maps are rendered from cached vector tiles refreshed nightly (steering minutes 4 of 2026-10-22 and spec maps of 2026-10-22).\n\n* The Cedar steering committee decided to compress photos on the device prior to upload [[ev_DEn3S00lbrfCOBly]].\n* Cedar renders maps from cached vector tiles that are refreshed nightly [[ev_hqblA3K8ZGExmK6w]]."
+    },
+    {
+      "id": "h17",
+      "category": "multi-document",
+      "type": "answerable",
+      "principal": "carol",
+      "question": "What is the Ember budget for 2027, and what liability cap did legal accept for Ember's vendor?",
+      "status": "answered",
+      "ms": 1750,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "The approved 2027 budget for Ember is EUR 1250 thousand, and legal accepted a liability cap of 4 times the annual fee for its vendor (Harbor HR Cloud) .",
+          "supported": true
+        },
+        {
+          "claim": "The approved Ember budget for 2027 is EUR 1250 thousand (file of 2026-10-22) .",
+          "supported": true
+        },
+        {
+          "claim": "Legal accepted the Harbor HR Cloud liability cap at 4 times the annual fee (file of 2026-10-22) .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "eval-corpus:finance-legal_ember-budget.docx",
+        "eval-corpus:finance-legal_ember-legal-review.md"
+      ],
+      "answer": "The approved 2027 budget for Ember is EUR 1250 thousand, and legal accepted a liability cap of 4 times the annual fee for its vendor (Harbor HR Cloud) [[ev_FueVubDg8M8DZuvu]][[ev_o5N1w72-STHP-Gd0]].\n\n* The approved Ember budget for 2027 is EUR 1250 thousand (file of 2026-10-22) [[ev_FueVubDg8M8DZuvu]].\n* Legal accepted the Harbor HR Cloud liability cap at 4 times the annual fee (file of 2026-10-22) [[ev_o5N1w72-STHP-Gd0]]."
+    },
+    {
+      "id": "h18",
+      "category": "near-miss",
+      "type": "unanswerable",
+      "principal": "bob",
+      "question": "What is the daily per diem for business travel to Japan?",
+      "status": "insufficient_evidence",
+      "ms": 1531,
+      "answered": false,
+      "citesSupporting": null,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [],
+      "citedDocs": [],
+      "answer": "I could not find enough authorized evidence to answer that. I will not guess. Try rephrasing, or ask someone with access to the relevant project sources."
+    },
+    {
+      "id": "h19",
+      "category": "near-miss",
+      "type": "unanswerable",
+      "principal": "bob",
+      "question": "How often must passwords for regular user accounts be rotated?",
+      "status": "insufficient_evidence",
+      "ms": 1250,
+      "answered": false,
+      "citesSupporting": null,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [],
+      "citedDocs": [],
+      "answer": "I could not find enough authorized evidence to answer that. I will not guess. Try rephrasing, or ask someone with access to the relevant project sources."
+    },
+    {
+      "id": "h20",
+      "category": "near-miss",
+      "type": "unanswerable",
+      "principal": "alice",
+      "question": "What was the main blocker for Borealis in December 2026?",
+      "status": "insufficient_evidence",
+      "ms": 1457,
+      "answered": false,
+      "citesSupporting": null,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [],
+      "citedDocs": [],
+      "answer": "I could not find enough authorized evidence to answer that. I will not guess. Try rephrasing, or ask someone with access to the relevant project sources."
+    },
+    {
+      "id": "h21",
+      "category": "near-miss",
+      "type": "unanswerable",
+      "principal": "alice",
+      "question": "What is the current planned go-live date for the Falcon project?",
+      "status": "insufficient_evidence",
+      "ms": 1113,
+      "answered": false,
+      "citesSupporting": null,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [],
+      "citedDocs": [],
+      "answer": "I could not find enough authorized evidence to answer that. I will not guess. Try rephrasing, or ask someone with access to the relevant project sources."
+    },
+    {
+      "id": "h22",
+      "category": "near-miss",
+      "type": "unanswerable",
+      "principal": "bob",
+      "question": "How many days of parental leave do employees receive?",
+      "status": "insufficient_evidence",
+      "ms": 1176,
+      "answered": false,
+      "citesSupporting": null,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [],
+      "citedDocs": [],
+      "answer": "I could not find enough authorized evidence to answer that. I will not guess. Try rephrasing, or ask someone with access to the relevant project sources."
+    },
+    {
+      "id": "bg01",
+      "category": "bulgarian",
+      "type": "answerable",
+      "principal": "alice",
+      "question": "Какъв е основният блокер на проекта Атлас?",
+      "status": "answered",
+      "ms": 1779,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": true,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "Основният блокер на проекта Атлас според документа от септември 2026 г. е забавянето на сертифицирането на платежния интерфейс на Northwind заради промяна в удостоверяването в тестовата среда .",
+          "supported": true
+        },
+        {
+          "claim": "Основен блокер: Забавяне на сертифицирането на платежния интерфейс на Northwind поради промяна в удостоверяването в тестовата среда .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "atlas-status-bg"
+      ],
+      "answer": "Основният блокер на проекта Атлас според документа от септември 2026 г. е забавянето на сертифицирането на платежния интерфейс на Northwind заради промяна в удостоверяването в тестовата среда [[ev_6CzRrccWD-Cpc9iY]].\n\n* Основен блокер: Забавяне на сертифицирането на платежния интерфейс на Northwind поради промяна в удостоверяването в тестовата среда [[ev_6CzRrccWD-Cpc9iY]]."
+    },
+    {
+      "id": "bg02",
+      "category": "bulgarian",
+      "type": "answerable",
+      "principal": "bob",
+      "question": "Колко дни платен годишен отпуск има служител на пълен работен ден?",
+      "status": "answered",
+      "ms": 1657,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": true,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "Служител на пълен работен ден има право на 20 работни дни платен годишен отпуск за календарна година (версия 2026-09) .",
+          "supported": true
+        },
+        {
+          "claim": "Всеки служител на пълен работен ден има право на 20 работни дни платен годишен отпуск за календарна година (версия 2026-09) .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "handbook-otpuski-bg"
+      ],
+      "answer": "Служител на пълен работен ден има право на 20 работни дни платен годишен отпуск за календарна година (версия 2026-09) [[ev_m8-RL1SYBGFtTFfL]].\n\n* Всеки служител на пълен работен ден има право на 20 работни дни платен годишен отпуск за календарна година (версия 2026-09) [[ev_m8-RL1SYBGFtTFfL]]."
+    },
+    {
+      "id": "bg03",
+      "category": "bulgarian",
+      "type": "answerable",
+      "principal": "bob",
+      "question": "До кога трябва да се използват прехвърлените дни отпуск?",
+      "status": "answered",
+      "ms": 1833,
+      "answered": true,
+      "citesSupporting": true,
+      "expectTextFound": true,
+      "bulgarianAnswer": true,
+      "leaks": [],
+      "claims": [
+        {
+          "claim": "Прехвърлените дни отпуск трябва да бъдат използвани до 31 март на следващата година според политиката за отпуските от септември 2026 г. .",
+          "supported": true
+        },
+        {
+          "claim": "Прехвърлените дни отпуск са до 5 неизползвани дни от предходната година .",
+          "supported": true
+        },
+        {
+          "claim": "Крайният срок за тяхното източни/използване е 31 март .",
+          "supported": true
+        }
+      ],
+      "citedDocs": [
+        "handbook-otpuski-bg"
+      ],
+      "answer": "Прехвърлените дни отпуск трябва да бъдат използвани до 31 март на следващата година според политиката за отпуските от септември 2026 г. [[ev_WWpI8c-sIH4Xw2Nu]].\n\n* Прехвърлените дни отпуск са до 5 неизползвани дни от предходната година [[ev_WWpI8c-sIH4Xw2Nu]].\n* Крайният срок за тяхното източни/използване е 31 март [[ev_WWpI8c-sIH4Xw2Nu]]."
+    },
+    {
+      "id": "bg04",
+      "category": "bulgarian",
+      "type": "permission",
+      "principal": "bob",
+      "question": "Защо се забави проектът Атлас?",
+      "status": "insufficient_evidence",
+      "ms": 2331,
+      "answered": false,
+      "citesSupporting": null,
+      "expectTextFound": null,
+      "bulgarianAnswer": null,
+      "leaks": [],
+      "claims": [],
+      "citedDocs": [],
+      "answer": "Не намерих достатъчно информация, до която имате достъп, за да отговоря. Няма да гадая. Опитайте да зададете въпроса по друг начин или попитайте колега с достъп до съответните източници."
+    }
+  ]
+}
