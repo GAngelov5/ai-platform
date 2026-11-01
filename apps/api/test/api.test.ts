@@ -8,11 +8,11 @@ import { fileURLToPath } from "node:url";
 import { FakeModelGateway } from "@platform/ai";
 import { createRepositories, type Database } from "@platform/database";
 import { createTestDatabase } from "@platform/database/testing";
-import { loadPlatformConfig } from "@platform/security";
+import { loadPlatformConfig, SecretSealer } from "@platform/security";
 import { seedFixtures } from "@platform/worker/seed";
 import { createTrackerHttpServer, TrackerStore } from "@platform/mcp-atlas-tracker";
-import { fetchMcpToolPins } from "@platform/connectors";
-import { FakeGoogle, FakeNotionOAuth } from "@platform/connectors/testing";
+import { AirtableProvider, airtableTokenResolver, fetchMcpToolPins, ORGANIZATION_OWNER, PersonalConnectionStore } from "@platform/connectors";
+import { FakeAirtableOAuth, FakeGoogle, FakeNotionOAuth } from "@platform/connectors/testing";
 import { randomBytes } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -786,6 +786,7 @@ describe("personal Google Calendar connection (ADR 0015)", () => {
     expect((await alice.req("GET", "/api/connections")).json).toEqual([
       expect.objectContaining({ provider: "google", configured: false, connected: false }),
       expect.objectContaining({ provider: "notion", configured: false, connected: false, canManage: false }),
+      expect.objectContaining({ provider: "airtable", configured: false, connected: false, canManage: false }),
     ]);
     expect((await alice.req("POST", "/api/connections/google/start")).status).toBe(404);
   });
@@ -865,5 +866,83 @@ describe("Connect Notion (organization connection, ADR 0015)", () => {
     expect(await card(dana)).toMatchObject({ connected: false });
     const audit = (await dana.req("GET", "/api/admin/audit?action=connection.notion")).json as { action: string }[];
     expect(audit.map((a) => a.action)).toEqual(expect.arrayContaining(["connection.notion.connected", "connection.notion.disconnected"]));
+  });
+});
+
+describe("Connect Airtable (organization connection, ADR 0015 addendum)", () => {
+  let airtable: FakeAirtableOAuth;
+  let n: Awaited<ReturnType<typeof boot>>;
+  const key = randomBytes(32).toString("base64");
+
+  beforeAll(async () => {
+    airtable = await new FakeAirtableOAuth().start();
+    n = await boot(
+      { AIRTABLE_CLIENT_ID: "airtable-client", AIRTABLE_CLIENT_SECRET: "airtable-secret", CONNECTION_ENCRYPTION_KEY: key, PUBLIC_ORIGIN: "https://brain.example.test" },
+      { airtableEndpoints: airtable.endpoints },
+    );
+  });
+  afterAll(async () => {
+    await n?.app.close();
+    await n?.deps.connectors.closeAll();
+    airtable?.close();
+  });
+
+  const card = async (c: Client) => ((await c.req("GET", "/api/connections")).json as { provider: string }[]).find((x) => x.provider === "airtable") as Record<string, unknown>;
+  const callback = (c: Client, url: URL, code: string) =>
+    fetch(`${n.base}/api/connections/airtable/callback?${new URLSearchParams({ state: url.searchParams.get("state")!, code })}`, {
+      redirect: "manual",
+      headers: { cookie: `platform_oauth_nonce=${c.cookies.get("platform_oauth_nonce")}` },
+    });
+
+  it("only an admin can connect", async () => {
+    const alice = await new Client(n.base).login("alice");
+    expect(await card(alice)).toMatchObject({ configured: true, connected: false, scope: "organization", canManage: false });
+    expect((await alice.req("POST", "/api/connections/airtable/start")).status).toBe(404);
+  });
+
+  it("refuses a grant without the needed scopes", async () => {
+    const dana = await new Client(n.base).login("dana");
+    const url = new URL((await dana.req("POST", "/api/connections/airtable/start")).json.url as string);
+    const res = await callback(dana, url, airtable.consent(url.toString(), { scope: "data.records:read" }));
+    expect(res.headers.get("location")).toBe("/connections?provider=airtable&result=missing_scope");
+    expect(await card(dana)).toMatchObject({ connected: false });
+  });
+
+  it("Dana connects through Airtable's screen (PKCE, callback on PUBLIC_ORIGIN); the bases are shown and a sync is requested", async () => {
+    const dana = await new Client(n.base).login("dana");
+    const url = new URL((await dana.req("POST", "/api/connections/airtable/start")).json.url as string);
+    expect(url.origin + url.pathname).toBe(airtable.endpoints.authorize);
+    expect(url.searchParams.get("redirect_uri")).toBe("https://brain.example.test/api/connections/airtable/callback");
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    const res = await callback(dana, url, airtable.consent(url.toString()));
+    expect(res.headers.get("location")).toBe("/connections?provider=airtable&result=connected");
+    expect(await card(await new Client(n.base).login("alice"))).toMatchObject({ connected: true, account: "Sales CRM", connectedBy: "Dana Operator (platform admin)" });
+    const sources = (await dana.req("GET", "/api/admin/sources")).json as { id: string; syncRequested: boolean }[];
+    expect(sources.find((s) => s.id === "airtable")).toMatchObject({ syncRequested: true });
+    const audit = JSON.stringify((await dana.req("GET", "/api/admin/audit?action=connection.airtable")).json);
+    expect(audit).toContain("connection.airtable.connected");
+    expect(audit).not.toMatch(/atat-|atrt-/);
+  });
+
+  it("two processes refreshing at once through the database's row lock: one refresh, the same new token", async () => {
+    airtable.refreshDelayMs = 30;
+    const provider = new AirtableProvider({ clientId: "airtable-client", clientSecret: "airtable-secret", redirectUri: "x" }, airtable.endpoints);
+    const later = () => new Date(Date.now() + 2 * 3600_000);
+    // Separate stores: nothing shared in memory, only the table.
+    const resolver = () => airtableTokenResolver(new PersonalConnectionStore(createRepositories(db).connections, new SecretSealer(key)), provider, "cust_demo", { now: later });
+    const before = airtable.refreshCalls.length;
+    const [a, b] = await Promise.all([resolver()(), resolver()()]);
+    expect(airtable.refreshCalls.length - before).toBe(1);
+    expect(a).toBe(b);
+    expect(airtable.accessTokenWorks(a!)).toBe(true);
+    const stored = await new PersonalConnectionStore(createRepositories(db).connections, new SecretSealer(key)).get("cust_demo", ORGANIZATION_OWNER, "airtable");
+    expect(stored).toMatchObject({ accessToken: a, connectedBy: "dana", accountEmail: "Sales CRM" });
+    airtable.refreshDelayMs = 0;
+  });
+
+  it("Dana disconnects: removed and a sync is requested to remove the records", async () => {
+    const dana = await new Client(n.base).login("dana");
+    expect((await dana.req("DELETE", "/api/connections/airtable")).json).toEqual({ connected: false, revokedAtProvider: false });
+    expect(await card(dana)).toMatchObject({ connected: false });
   });
 });

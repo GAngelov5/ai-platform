@@ -504,6 +504,38 @@ export function createRepositories(db: Database) {
             set: { ...rest, refreshTokenSealed: row.refreshTokenSealed ?? undefined, updatedAt: new Date() },
           });
       },
+      /** Holds the row (SELECT … FOR UPDATE) while `fn` runs; `write` replaces it in the same transaction. */
+      async withRowLock<T>(
+        customerId: string,
+        principalId: string,
+        provider: string,
+        fn: (
+          row: typeof personalConnections.$inferSelect | undefined,
+          write: (row: {
+            customerId: string;
+            principalId: string;
+            provider: string;
+            accountEmail: string | null;
+            connectedBy: string | null;
+            scopes: string[];
+            accessTokenSealed: string;
+            refreshTokenSealed: string | null;
+            accessTokenExpiresAt: Date;
+          }) => Promise<void>,
+        ) => Promise<T>,
+      ): Promise<T> {
+        const where = and(eq(personalConnections.customerId, customerId), eq(personalConnections.principalId, principalId), eq(personalConnections.provider, provider));
+        return db.transaction(async (tx) => {
+          const [row] = await tx.select().from(personalConnections).where(where).for("update");
+          return fn(row, async (next) => {
+            const { customerId: _c, principalId: _p, provider: _v, ...rest } = next;
+            await tx
+              .update(personalConnections)
+              .set({ ...rest, refreshTokenSealed: next.refreshTokenSealed ?? undefined, updatedAt: new Date() })
+              .where(where);
+          });
+        });
+      },
       async delete(customerId: string, principalId: string, provider: string): Promise<boolean> {
         const r = await db
           .delete(personalConnections)

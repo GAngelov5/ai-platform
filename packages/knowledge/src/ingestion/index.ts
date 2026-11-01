@@ -6,3 +6,4 @@ export * from "./fixture-source.js";
 export * from "./folder-source.js";
 export * from "./sources.js";
 export * from "./notion-source.js";
+export * from "./airtable-source.js";

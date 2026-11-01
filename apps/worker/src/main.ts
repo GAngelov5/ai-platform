@@ -53,7 +53,7 @@ async function main() {
       if (c.env === "production") throw new Error("refusing to seed synthetic fixtures in production");
       const h = connectDatabase(c.databaseUrl!, { max: 1 });
       try {
-        const r = await seedFixtures(h.db, FIXTURES_ROOT, c.customerId, c.ingestion.sourcesJson, { includeEvalCorpus: c.ingestion.includeEvalCorpus, notion: c.ingestion.notion });
+        const r = await seedFixtures(h.db, FIXTURES_ROOT, c.customerId, c.ingestion.sourcesJson, { includeEvalCorpus: c.ingestion.includeEvalCorpus, notion: c.ingestion.notion, airtable: c.ingestion.airtable });
         log.info(r, "synthetic fixtures seeded");
       } finally {
         await h.close();
@@ -104,7 +104,7 @@ async function main() {
       const h = connectDatabase(c.databaseUrl!, { max: 2 });
       try {
         await h.withLock(indexLock(c.customerId), async () => {
-          const reports = await ingestAll(h.db, c.customerId, loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT, { includeEvalCorpus: c.ingestion.includeEvalCorpus, notion: c.ingestion.notion }), (m, d) => log.info(d ?? {}, m), process.argv[3], adapterOptions(c, h.db));
+          const reports = await ingestAll(h.db, c.customerId, loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT, { includeEvalCorpus: c.ingestion.includeEvalCorpus, notion: c.ingestion.notion, airtable: c.ingestion.airtable }), (m, d) => log.info(d ?? {}, m), process.argv[3], adapterOptions(c, h.db));
           for (const [id, r] of Object.entries(reports)) log.info({ source: id, ...r }, "ingestion complete");
           if (c.knowledge.provider === "lightrag" && process.argv.includes("--sync")) {
             const k = c.knowledge;
@@ -166,7 +166,7 @@ async function main() {
       const h = connectDatabase(c.databaseUrl!, { max: 3 });
       await waitFor("postgres", h.ping);
       const repos = createRepositories(h.db);
-      const sources = loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT, { includeEvalCorpus: c.ingestion.includeEvalCorpus, notion: c.ingestion.notion });
+      const sources = loadSources(c.ingestion.sourcesJson, FIXTURES_ROOT, { includeEvalCorpus: c.ingestion.includeEvalCorpus, notion: c.ingestion.notion, airtable: c.ingestion.airtable });
       const { actions, capabilities } = buildIntegrations({
         db: h.db,
         mcpServersJson: c.integrations.mcpServersJson,

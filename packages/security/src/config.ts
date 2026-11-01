@@ -86,6 +86,13 @@ const EnvSchema = z.object({
   NOTION_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
   /** Platform groups that may read every page shared with the Notion integration. */
   NOTION_ACL_GROUPS: z.string().default("all-staff"),
+  // Airtable source (ADR 0015 addendum): an OAuth integration, so an admin connects with "Connect" and picks bases on Airtable's screen.
+  AIRTABLE_CLIENT_ID: z.string().min(1).optional(),
+  AIRTABLE_CLIENT_SECRET: z.string().min(1).optional(),
+  /** Platform groups that may read every record of every granted base. */
+  AIRTABLE_ACL_GROUPS: z.string().default("all-staff"),
+  /** Optional per-base override, JSON: {"appXXXXXXXXXXXXXX": ["finance-legal"]}. Those bases are readable by these groups instead. */
+  AIRTABLE_BASE_ACL_GROUPS: z.string().optional(),
   ACTION_PROPOSAL_TTL_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(30),
 
   MODEL_MODE: z.enum(["local", "hybrid"]).default("local"),
@@ -147,6 +154,8 @@ export interface PlatformConfig {
     google?: { clientId: string; clientSecret: string; redirectUri: string; timeZone: string };
     /** Notion "Connect" (organization connection, admins only). */
     notion?: { clientId: string; clientSecret: string; redirectUri: string };
+    /** Airtable "Connect" (organization connection, admins only). */
+    airtable?: { clientId: string; clientSecret: string; redirectUri: string };
     connectionEncryptionKey?: string;
   };
   ingestion: {
@@ -156,6 +165,8 @@ export interface PlatformConfig {
     /** Adds the Notion source to the default sources when NOTION_TOKEN or the Notion OAuth client is set. */
     /** viaConnection: the token comes from the admin's "Connect Notion", not NOTION_TOKEN. */
     notion?: { aclGroups: string[]; viaConnection: boolean };
+    /** Adds the Airtable source when the Airtable OAuth client is set; baseAclGroups overrides aclGroups per base id. */
+    airtable?: { aclGroups: string[]; baseAclGroups: Record<string, string[]> };
   };
   model:
     | { mode: "local" | "hybrid"; provider: "fake" }
@@ -295,6 +306,21 @@ export function loadPlatformConfig(
   }
   const notionGroups = e.NOTION_ACL_GROUPS.split(",").map((g) => g.trim()).filter(Boolean);
   if ((e.NOTION_TOKEN || e.NOTION_OAUTH_CLIENT_ID) && notionGroups.length === 0) problems.push("NOTION_ACL_GROUPS must list at least one platform group");
+  if (!!e.AIRTABLE_CLIENT_ID !== !!e.AIRTABLE_CLIENT_SECRET) problems.push("set both AIRTABLE_CLIENT_ID and AIRTABLE_CLIENT_SECRET, or neither");
+  if (e.AIRTABLE_CLIENT_ID && !e.CONNECTION_ENCRYPTION_KEY) problems.push("CONNECTION_ENCRYPTION_KEY is required for the Airtable connection");
+  const airtableGroups = e.AIRTABLE_ACL_GROUPS.split(",").map((g) => g.trim()).filter(Boolean);
+  if (e.AIRTABLE_CLIENT_ID && airtableGroups.length === 0) problems.push("AIRTABLE_ACL_GROUPS must list at least one platform group");
+  const airtableBaseGroups: Record<string, string[]> = {};
+  if (e.AIRTABLE_BASE_ACL_GROUPS) {
+    const parsed = safeJson(e.AIRTABLE_BASE_ACL_GROUPS);
+    const ok =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed) &&
+      Object.entries(parsed as Record<string, unknown>).every(
+        ([k, v]) => /^app[A-Za-z0-9]{14}$/.test(k) && Array.isArray(v) && v.length > 0 && v.every((g) => typeof g === "string" && g.trim()),
+      );
+    if (!ok) problems.push('AIRTABLE_BASE_ACL_GROUPS must be JSON like {"appXXXXXXXXXXXXXX": ["finance-legal"]}');
+    else for (const [k, v] of Object.entries(parsed as Record<string, string[]>)) airtableBaseGroups[k] = v.map((g) => g.trim());
+  }
 
   if (e.MCP_SERVERS) {
     const parsed = safeJson(e.MCP_SERVERS);
@@ -390,6 +416,9 @@ export function loadPlatformConfig(
       notion: e.NOTION_OAUTH_CLIENT_ID
         ? { clientId: e.NOTION_OAUTH_CLIENT_ID, clientSecret: e.NOTION_OAUTH_CLIENT_SECRET!, redirectUri: `${new URL(e.PUBLIC_ORIGIN).origin}/api/connections/notion/callback` }
         : undefined,
+      airtable: e.AIRTABLE_CLIENT_ID
+        ? { clientId: e.AIRTABLE_CLIENT_ID, clientSecret: e.AIRTABLE_CLIENT_SECRET!, redirectUri: `${new URL(e.PUBLIC_ORIGIN).origin}/api/connections/airtable/callback` }
+        : undefined,
       connectionEncryptionKey: e.CONNECTION_ENCRYPTION_KEY,
     },
     ingestion: {
@@ -397,6 +426,7 @@ export function loadPlatformConfig(
       intervalMinutes: e.INGEST_INTERVAL_MINUTES,
       includeEvalCorpus: e.KNOWLEDGE_INCLUDE_EVAL_CORPUS,
       notion: e.NOTION_TOKEN || e.NOTION_OAUTH_CLIENT_ID ? { aclGroups: notionGroups, viaConnection: !e.NOTION_TOKEN } : undefined,
+      airtable: e.AIRTABLE_CLIENT_ID ? { aclGroups: airtableGroups, baseAclGroups: airtableBaseGroups } : undefined,
     },
     model:
       e.MODEL_PROVIDER === "openai-compatible"

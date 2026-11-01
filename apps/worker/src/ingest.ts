@@ -1,4 +1,4 @@
-import { NotionProvider, notionTokenResolver, PersonalConnectionStore } from "@platform/connectors";
+import { AirtableProvider, airtableTokenResolver, NotionProvider, notionTokenResolver, PersonalConnectionStore } from "@platform/connectors";
 import { createRepositories, type Database } from "@platform/database";
 import { SecretSealer, type PlatformConfig } from "@platform/security";
 import { adapterFor, ingestSource, type IngestionReport, type IngestionStore, type SourceConfig } from "@platform/knowledge";
@@ -27,14 +27,14 @@ export function ingestionStore(db: Database): IngestionStore {
   };
 }
 
-/** How source adapters get their credentials: env secrets, and the admin's "Connect Notion" (ADR 0015). */
+/** How source adapters get their credentials: env secrets, and the admin's "Connect Notion" / "Connect Airtable" (ADR 0015). */
 export function adapterOptions(config: PlatformConfig, db: Database) {
-  const n = config.integrations.notion;
-  const key = config.integrations.connectionEncryptionKey;
+  const { notion: n, airtable: a, connectionEncryptionKey: key } = config.integrations;
+  const store = key ? new PersonalConnectionStore(createRepositories(db).connections, new SecretSealer(key)) : undefined;
   return {
     secret: (name: string) => process.env[name],
-    notionConnection:
-      n && key ? notionTokenResolver(new PersonalConnectionStore(createRepositories(db).connections, new SecretSealer(key)), new NotionProvider(n), config.customerId) : undefined,
+    notionConnection: n && store ? notionTokenResolver(store, new NotionProvider(n), config.customerId) : undefined,
+    airtableConnection: a && store ? airtableTokenResolver(store, new AirtableProvider(a), config.customerId) : undefined,
   };
 }
 

@@ -19,7 +19,7 @@ Be concise: a short summary sentence, then the key points as bullet points.
 Never speculate about causes that the evidence does not state.
 When the user asks to create, schedule or book an event, prepare it with calendar.event.create and say that it waits for their approval; never claim it was created. If the date is missing, ask for it.`,
   capabilities: ["knowledge.search", "tracker.tasks.list", "tracker.task.status", "tracker.task.comment", "calendar.event.create"],
-  knowledgeScopes: { sourceIds: ["atlas-project-docs", "company-handbook", "team-share", "notion"] },
+  knowledgeScopes: { sourceIds: ["atlas-project-docs", "company-handbook", "team-share", "notion", "airtable"] },
   outputSchema: "cited-answer@1",
   limits: {
     maxToolCalls: 4,
