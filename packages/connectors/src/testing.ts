@@ -16,6 +16,11 @@ export class FakeGoogle {
   /** code -> what the consent screen produced. */
   private readonly codes = new Map<string, { challenge: string; redirectUri: string; email: string; scope: string }>();
   private readonly access = new Map<string, string>(); // access token -> email
+  private readonly tokenScopes = new Map<string, string>(); // access or refresh token -> granted scope
+  /** Event inserts that reached Google (after any duplicate check), with their sendUpdates. */
+  readonly inserts: { email: string; body: Record<string, unknown>; sendUpdates: string | null }[] = [];
+  /** Tests: create the next event, then drop the connection before answering (an ambiguous outcome). */
+  dropNextInsertResponse = false;
   private readonly refresh = new Map<string, string>(); // refresh token -> email
   private n = 0;
   events: Record<string, unknown[]> = {};
@@ -74,6 +79,8 @@ export class FakeGoogle {
         const rt = `rt-${++this.n}`;
         this.access.set(at, c.email);
         this.refresh.set(rt, c.email);
+        this.tokenScopes.set(at, c.scope);
+        this.tokenScopes.set(rt, c.scope);
         const idToken = ["e30", Buffer.from(JSON.stringify({ email: c.email })).toString("base64url"), "sig"].join(".");
         return json(200, { access_token: at, refresh_token: rt, expires_in: 3599, scope: c.scope, token_type: "Bearer", id_token: idToken });
       }
@@ -82,6 +89,7 @@ export class FakeGoogle {
         if (!email) return json(400, { error: "invalid_grant" });
         const at = `at-${++this.n}`;
         this.access.set(at, email);
+        this.tokenScopes.set(at, this.tokenScopes.get(form.get("refresh_token") ?? "") ?? "");
         return json(200, { access_token: at, expires_in: 3599, token_type: "Bearer" });
       }
       return json(400, { error: "unsupported_grant_type" });
@@ -92,6 +100,30 @@ export class FakeGoogle {
       this.refresh.delete(t);
       this.access.delete(t);
       return json(200, {});
+    }
+    if (url.pathname.startsWith("/calendar/v3/calendars/primary/events") && (req.method === "POST" || url.pathname !== "/calendar/v3/calendars/primary/events")) {
+      const token = (req.headers.authorization ?? "").replace(/^Bearer /, "");
+      const email = this.access.get(token);
+      if (!email) return json(401, { error: { code: 401 } });
+      const mine = (this.events[email] ??= []) as { id?: string; status?: string; htmlLink?: string }[];
+      if (req.method === "GET") {
+        const id = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+        const e = mine.find((x) => x.id === id);
+        return e ? json(200, e) : json(404, { error: { code: 404 } });
+      }
+      if (!(this.tokenScopes.get(token) ?? "").split(" ").includes("https://www.googleapis.com/auth/calendar.events")) {
+        return json(403, { error: { code: 403, message: "Request had insufficient authentication scopes.", status: "PERMISSION_DENIED" } });
+      }
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}") as Record<string, unknown>;
+      if (mine.some((x) => x.id === body.id)) return json(409, { error: { code: 409, message: "The requested identifier already exists." } });
+      const created = { ...body, status: "confirmed", htmlLink: `https://calendar.google.test/event?eid=${String(body.id)}` };
+      mine.push(created);
+      this.inserts.push({ email, body, sendUpdates: url.searchParams.get("sendUpdates") });
+      if (this.dropNextInsertResponse) {
+        this.dropNextInsertResponse = false;
+        return req.socket.destroy();
+      }
+      return json(200, created);
     }
     if (req.method === "GET" && url.pathname === "/calendar/v3/calendars/primary/events") {
       const token = (req.headers.authorization ?? "").replace(/^Bearer /, "");

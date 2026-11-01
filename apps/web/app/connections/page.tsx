@@ -25,6 +25,7 @@ interface Connection {
   account: string | null;
   connectedAt: string | null;
   connectedBy: string | null;
+  needsReconnect?: boolean;
   canManage: boolean;
 }
 
@@ -89,6 +90,7 @@ function ConnectionCard({ c, onChange, note }: { c: Connection; onChange: () => 
           {c.scope === "organization" && c.connectedBy ? t("conn.connectedOrg", { account: c.account, who: c.connectedBy }) : t("conn.connectedAs", { account: c.account })}
         </p>
       )}
+      {c.connected && c.needsReconnect && <p className="mt-2 rounded-xl bg-warn-bg px-3.5 py-2.5 text-sm text-warn-ink">{t("conn.google.reconnect")}</p>}
       {c.configured && !c.canManage && <p className="mt-2 text-[13px] text-muted">{t("conn.notion.adminOnly")}</p>}
       {msg && (
         <p role="status" className={`mt-3 rounded-xl px-3.5 py-2.5 text-sm ${msg.ok ? "bg-brand-soft text-brand" : "bg-warn-bg text-warn-ink"}`}>
@@ -98,9 +100,16 @@ function ConnectionCard({ c, onChange, note }: { c: Connection; onChange: () => 
       {c.configured && c.canManage && (
         <div className="mt-4">
           {c.connected ? (
-            <button type="button" disabled={busy} onClick={() => void disconnect()} className="min-h-10 cursor-pointer rounded-full border border-line-strong px-4 text-sm font-semibold hover:bg-panel disabled:opacity-60">
-              {t("conn.disconnect")}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              {c.needsReconnect && (
+                <button type="button" disabled={busy} onClick={() => void connect()} className="min-h-10 cursor-pointer rounded-full bg-brand px-4 text-sm font-semibold text-on-brand disabled:opacity-60">
+                  {t("conn.reconnect")}
+                </button>
+              )}
+              <button type="button" disabled={busy} onClick={() => void disconnect()} className="min-h-10 cursor-pointer rounded-full border border-line-strong px-4 text-sm font-semibold hover:bg-panel disabled:opacity-60">
+                {t("conn.disconnect")}
+              </button>
+            </div>
           ) : (
             <button type="button" disabled={busy} onClick={() => void connect()} className="min-h-10 cursor-pointer rounded-full bg-brand px-4 text-sm font-semibold text-on-brand disabled:opacity-60">
               {t("conn.connect", { name })}

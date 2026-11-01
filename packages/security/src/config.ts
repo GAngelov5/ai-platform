@@ -75,6 +75,8 @@ const EnvSchema = z.object({
   // Personal Google connections (ADR 0015): calendar read-only, per user.
   GOOGLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+  /** Time zone for times users give without one (calendar events). IANA name, e.g. Europe/Sofia. */
+  PLATFORM_TIME_ZONE: z.string().default("UTC"),
   /** 32 random bytes, base64: seals stored connection tokens. */
   CONNECTION_ENCRYPTION_KEY: z.string().min(1).optional(),
   // Notion source (ADR 0015). The token itself is read by reference (NOTION_TOKEN), never stored.
@@ -142,7 +144,7 @@ export interface PlatformConfig {
     mcpServersJson?: string;
     proposalTtlMinutes: number;
     /** Personal Google connections; absent when not configured. */
-    google?: { clientId: string; clientSecret: string; redirectUri: string };
+    google?: { clientId: string; clientSecret: string; redirectUri: string; timeZone: string };
     /** Notion "Connect" (organization connection, admins only). */
     notion?: { clientId: string; clientSecret: string; redirectUri: string };
     connectionEncryptionKey?: string;
@@ -280,6 +282,11 @@ export function loadPlatformConfig(
   }
 
   if (!!e.GOOGLE_OAUTH_CLIENT_ID !== !!e.GOOGLE_OAUTH_CLIENT_SECRET) problems.push("set both GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET, or neither");
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: e.PLATFORM_TIME_ZONE });
+  } catch {
+    problems.push(`PLATFORM_TIME_ZONE: "${e.PLATFORM_TIME_ZONE}" is not an IANA time zone (e.g. Europe/Sofia)`);
+  }
   if (e.GOOGLE_OAUTH_CLIENT_ID && !e.CONNECTION_ENCRYPTION_KEY) problems.push("CONNECTION_ENCRYPTION_KEY is required for personal Google connections");
   if (!!e.NOTION_OAUTH_CLIENT_ID !== !!e.NOTION_OAUTH_CLIENT_SECRET) problems.push("set both NOTION_OAUTH_CLIENT_ID and NOTION_OAUTH_CLIENT_SECRET, or neither");
   if (e.NOTION_OAUTH_CLIENT_ID && !e.CONNECTION_ENCRYPTION_KEY) problems.push("CONNECTION_ENCRYPTION_KEY is required for the Notion connection");
@@ -378,7 +385,7 @@ export function loadPlatformConfig(
       mcpServersJson: e.MCP_SERVERS,
       proposalTtlMinutes: e.ACTION_PROPOSAL_TTL_MINUTES,
       google: e.GOOGLE_OAUTH_CLIENT_ID
-        ? { clientId: e.GOOGLE_OAUTH_CLIENT_ID, clientSecret: e.GOOGLE_OAUTH_CLIENT_SECRET!, redirectUri: `${new URL(e.PUBLIC_ORIGIN).origin}/api/connections/google/callback` }
+        ? { clientId: e.GOOGLE_OAUTH_CLIENT_ID, clientSecret: e.GOOGLE_OAUTH_CLIENT_SECRET!, redirectUri: `${new URL(e.PUBLIC_ORIGIN).origin}/api/connections/google/callback`, timeZone: e.PLATFORM_TIME_ZONE }
         : undefined,
       notion: e.NOTION_OAUTH_CLIENT_ID
         ? { clientId: e.NOTION_OAUTH_CLIENT_ID, clientSecret: e.NOTION_OAUTH_CLIENT_SECRET!, redirectUri: `${new URL(e.PUBLIC_ORIGIN).origin}/api/connections/notion/callback` }

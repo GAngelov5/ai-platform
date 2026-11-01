@@ -16,6 +16,9 @@ the platform's rules?
 
 ### 1. Google Calendar is a personal connection, read-only
 
+> **Amended 2026-10-26 (decision 1a):** the connection may now also create
+> events, only through an approved action. The rest of this decision stands.
+
 - Each user connects **their own** Google account under **Your connections**.
   The grant is OAuth 2.0 authorization code with **PKCE (S256)**, plus a
   refresh token (`access_type=offline`).
@@ -44,6 +47,32 @@ the platform's rules?
 - **Untrusted content:** event descriptions are written by whoever sent the
   invite. They are bounded (2,000 characters), HTML is stripped, and the
   runtime treats them as data, like every live result.
+
+### 1a. Creating events, only through an approval
+
+- Write capability `calendar.event.create` (given to the Project Assistant).
+  As with every write (ADR 0008), the model only **proposes**. The user
+  approves the exact event on a card, and the worker creates it once.
+- The scope becomes `calendar.events`, the narrowest that creates events (no
+  settings, no sharing, no other calendars). Older read-only connections keep
+  reading. Creating fails with "Reconnect Google Calendar", and the card
+  offers **Reconnect**.
+- **Owner and idempotency:**
+  - The calendar owner is the proposer (trusted context). It is not a model
+    argument, and it is bound into the approval hash.
+  - The Google event id is derived from the proposal's idempotency key. A
+    retried or redelivered execution gets 409 from Google and finds the
+    existing event. A lost response (`unknown`) reconciles by reading that
+    id, and never creates a second event.
+- **Exact text on the card:** times are local `YYYY-MM-DDTHH:MM` in an IANA
+  time zone (`PLATFORM_TIME_ZONE`, unless the user names one). All-day dates
+  are inclusive for the user and converted to Google's exclusive end. The
+  card's date text is formatted by hand, so it can't vary with locale data.
+- **Attendees** only when the user names their addresses. Google then emails
+  invitations (`sendUpdates=all`), and the card says who will get one.
+  Without attendees, `sendUpdates=none`.
+- Out of scope: changing or deleting events, recurring events, other
+  calendars.
 
 ### 2. The OAuth callback without the session cookie
 

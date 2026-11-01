@@ -57,7 +57,7 @@ export interface WriteBinding {
   tool: string;
   describe(input: Record<string, unknown>): WriteDescription;
   /** Complete connector arguments; bound into the approval hash. */
-  toConnectorArgs(input: Record<string, unknown>, meta: { idempotencyKey: string; principalDisplayName: string }): Record<string, unknown>;
+  toConnectorArgs(input: Record<string, unknown>, meta: { idempotencyKey: string; principalId: string; principalDisplayName: string }): Record<string, unknown>;
   /** Reconciles an uncertain outcome. Returns a receipt if the write is confirmed. */
   reconcile?(read: (tool: string, args: Record<string, unknown>) => Promise<unknown>, connectorArgs: Record<string, unknown>): Promise<Record<string, unknown> | undefined>;
   receipt(result: unknown): Record<string, unknown>;

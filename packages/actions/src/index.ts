@@ -163,7 +163,7 @@ export class ActionService {
     if (!this.authorized(principal, ctx.customerId, cap)) throw new NotFoundOrForbiddenError();
     const parsed = cap.definition.input.parse(input.input);
     const idempotencyKey = randomUUID();
-    const payload = cap.write.toConnectorArgs(parsed, { idempotencyKey, principalDisplayName: principal!.displayName });
+    const payload = cap.write.toConnectorArgs(parsed, { idempotencyKey, principalId: ctx.principalId, principalDisplayName: principal!.displayName });
     const desc = cap.write.describe(parsed);
     const base = {
       customerId: ctx.customerId,

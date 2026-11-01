@@ -8,6 +8,7 @@ import {
   PersonalConnectionStore,
   registerAtlasTrackerCapabilities,
   registerCalendarCapabilities,
+  registerCalendarCreateCapability,
   type GoogleEndpoints,
   type SealedConnectionRows,
 } from "@platform/connectors";
@@ -32,6 +33,8 @@ export interface IntegrationsInput {
     clientId: string;
     clientSecret: string;
     redirectUri: string;
+    /** Time zone for event times the user gives without one (PLATFORM_TIME_ZONE). */
+    timeZone?: string;
     encryptionKey: string;
     rows: SealedConnectionRows;
     /** Tests only: a local fake of Google's endpoints. */
@@ -56,6 +59,7 @@ export function buildIntegrations(i: IntegrationsInput) {
     const c = new GoogleCalendarConnector({ customerId: g.customerId, oauth, store, endpoints: g.endpoints });
     connectors.register(c);
     registerCalendarCapabilities(capabilities, c);
+    registerCalendarCreateCapability(capabilities, c, { timeZone: g.timeZone ?? "UTC" });
     google = { oauth, store };
   }
   for (const srv of servers) {

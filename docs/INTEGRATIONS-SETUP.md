@@ -15,7 +15,7 @@ answers.
 |---|---|---|
 | Kind | Personal connection: **each user** connects their own account | Organization connection: **an admin** connects the workspace once; its pages become a document source |
 | Connect | **Connect Google Calendar** → Google's sign-in | **Connect Notion** → Notion's sign-in and page picker |
-| Access | Read-only calendar events (`calendar.events.readonly`) | Only the pages picked on Notion's screen |
+| Access | Calendar events: read, and create after your approval (`calendar.events`) | Only the pages picked on Notion's screen |
 | Used by | Meeting Preparation Assistant (`calendar.events.list`) | Every assistant's document search, with citations |
 | Who can read it | Only the user who connected it | The groups in `NOTION_ACL_GROUPS` (default `all-staff`) |
 | Writes | None | None |
@@ -30,8 +30,13 @@ answers.
    - User type: **External** (or Internal if you use Google Workspace and only
      your organisation will connect).
    - App name, support email: anything.
-   - **Data access / Scopes**: add `.../auth/calendar.events.readonly`,
-     `openid` and `email`.
+   - **Data access / Scopes**: add `.../auth/calendar.events`, `openid` and
+     `email`. Google lists `calendar.events` as a *sensitive* scope: while the
+     app is in Testing that only means a "Google hasn't verified this app"
+     warning for your test users. Publishing it to everyone needs Google's
+     verification, unless the consent screen is **Internal** (Workspace).
+     Connections made with the older `calendar.events.readonly` scope still
+     read events; the card asks those users to **Reconnect** to allow creating them.
    - **Audience / Test users**: add your own Google address. While the app is in
      "Testing", only test users can connect, and refresh tokens expire after 7
      days. That is fine for testing.

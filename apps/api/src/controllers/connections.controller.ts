@@ -1,6 +1,6 @@
 import { Controller, Delete, Get, HttpCode, Inject, Param, Post, Query, Req, Res } from "@nestjs/common";
 import type { Response } from "express";
-import { connectionOwner, ConnectorError, newAuthorizationRequest, type OAuthProvider } from "@platform/connectors";
+import { connectionOwner, ConnectorError, newAuthorizationRequest, type OAuthProvider, canCreateEvents } from "@platform/connectors";
 import { hashToken, NotFoundOrForbiddenError, type TrustedContext } from "@platform/security";
 import { randomBytes } from "node:crypto";
 import { Ctx, Public } from "../auth/decorators.js";
@@ -71,6 +71,8 @@ export class ConnectionsController {
           account: c?.accountEmail ?? null,
           connectedAt: c?.connectedAt.toISOString() ?? null,
           connectedBy: by?.displayName ?? null,
+          // Connected before event creation existed: reads work, creating events needs a reconnect.
+          needsReconnect: !!c && k.id === "google" && !canCreateEvents(c.scopes),
           canManage: this.canManage(k, roles),
         };
       }),

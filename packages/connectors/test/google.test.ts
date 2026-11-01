@@ -48,14 +48,14 @@ beforeEach(() => {
 });
 
 describe("Google OAuth", () => {
-  it("asks for read-only calendar events with PKCE, a refresh token and nothing broader", () => {
+  it("asks for calendar events (read and create) with PKCE, a refresh token and nothing broader", () => {
     const { oauth } = world();
     const u = new URL(oauth.authorizationUrl({ state: "s1", codeChallenge: "ch" }));
     expect(u.searchParams.get("scope")).toBe(`openid email ${GOOGLE_CALENDAR_SCOPE}`);
     expect(u.searchParams.get("code_challenge_method")).toBe("S256");
     expect(u.searchParams.get("access_type")).toBe("offline");
     expect(u.searchParams.get("redirect_uri")).toBe(REDIRECT);
-    expect(GOOGLE_CALENDAR_SCOPE).toMatch(/calendar\.events\.readonly$/);
+    expect(GOOGLE_CALENDAR_SCOPE).toBe("https://www.googleapis.com/auth/calendar.events");
   });
 
   it("exchanges a code only with the matching PKCE verifier, once", async () => {
@@ -138,9 +138,10 @@ describe("Google Calendar connector", () => {
     expect(await store.get(C, "alice", "google")).toBeUndefined();
   });
 
-  it("is read-only: any other tool or a write classification is refused", async () => {
+  it("refuses unknown tools, and tools called with the wrong classification", async () => {
     const { calendar } = world();
     await expect(calendar.call("events_insert", { owner: "alice" }, { classification: "write" })).rejects.toMatchObject({ kind: "invalid_input" });
+    await expect(calendar.call("event_create", { owner: "alice" }, { classification: "read" })).rejects.toMatchObject({ kind: "invalid_input" });
     await expect(calendar.call("events_list", { owner: "alice", days: 1 }, { classification: "write" })).rejects.toMatchObject({ kind: "invalid_input" });
   });
 });

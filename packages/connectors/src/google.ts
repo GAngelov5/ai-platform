@@ -4,7 +4,8 @@ import { ConnectorError, type Connector, type ConnectorCallOptions, type Connect
 
 /**
  * Personal Google connections (ADR 0015). Each user connects their own
- * account; the platform holds a read-only calendar token for that user only.
+ * account; the platform holds a calendar-events token for that user only. It
+ * reads events, and creates one only through an approved action.
  * Endpoints are fixed in code (no configurable URL, so no SSRF); tests inject
  * a local fake.
  */
@@ -16,9 +17,13 @@ export const GOOGLE_ENDPOINTS = Object.freeze({
 });
 export type GoogleEndpoints = { [K in keyof typeof GOOGLE_ENDPOINTS]: string };
 
-/** The narrowest scope that lists events: read-only, no calendar settings, no writes. */
-export const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events.readonly";
+/** The narrowest scope that reads and creates events: no calendar settings, no other calendars' sharing. */
+export const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+/** Granted by connections made before event creation: still reads, can't create. */
+export const GOOGLE_CALENDAR_READONLY_SCOPE = "https://www.googleapis.com/auth/calendar.events.readonly";
 export const GOOGLE_SCOPES = ["openid", "email", GOOGLE_CALENDAR_SCOPE] as const;
+/** Whether a stored connection may create events (false: reconnect to allow it). */
+export const canCreateEvents = (scopes: readonly string[]) => scopes.includes(GOOGLE_CALENDAR_SCOPE);
 
 export interface StoredConnection {
   /** Account shown to the user: the Google address, or the Notion workspace name. */
@@ -224,6 +229,7 @@ function emailFromIdToken(idToken: unknown): string | undefined {
 
 interface GoogleEvent {
   id?: string;
+  htmlLink?: string;
   summary?: string;
   description?: string;
   location?: string;
@@ -234,6 +240,22 @@ interface GoogleEvent {
 }
 
 const clip = (s: string | undefined, n: number) => (s ?? "").replace(/\s+/g, " ").trim().slice(0, n);
+
+/** Arguments of `event_create`, built by the platform from an approved proposal (never by the model directly). */
+export interface CreateEventArgs {
+  owner: string;
+  /** Client-chosen event id (base32hex), derived from the proposal's idempotency key: a retry can't create a second event. */
+  eventId: string;
+  title: string;
+  /** "YYYY-MM-DD" (all day, end exclusive) or "YYYY-MM-DDTHH:MM" local to timeZone. */
+  start: string;
+  end: string;
+  allDay: boolean;
+  timeZone: string;
+  description?: string;
+  location?: string;
+  attendees?: string[];
+}
 
 /**
  * The signed-in user's Google Calendar, read-only. Same tool contract as the
@@ -281,13 +303,42 @@ export class GoogleCalendarConnector implements Connector {
     }
   }
 
+  /** One authorised request to the Calendar API, refreshing the token once on a 401. */
+  private async request(owner: string, url: URL, init: { method?: string; body?: unknown }, opts: ConnectorCallOptions): Promise<Response> {
+    const send = async (token: string) => {
+      try {
+        return await (this.opts.fetchImpl ?? fetch)(url, {
+          method: init.method ?? "GET",
+          headers: { authorization: `Bearer ${token}`, accept: "application/json", ...(init.body ? { "content-type": "application/json" } : {}) },
+          body: init.body ? JSON.stringify(init.body) : undefined,
+          signal: opts.signal ?? AbortSignal.timeout(15_000),
+        });
+      } catch (err) {
+        // A write may have reached Google before the connection failed: never report it as "not done".
+        if (opts.classification === "write") throw new ConnectorError("ambiguous_outcome", "Google Calendar did not answer; checking whether the event was created", this.id);
+        if ((err as Error).name === "AbortError" || (err as Error).name === "TimeoutError") throw new ConnectorError("unavailable", "Google Calendar timed out", this.id);
+        throw new ConnectorError("unavailable", "Google Calendar is unreachable", this.id);
+      }
+    };
+    let res = await send(await this.accessToken(owner, opts.signal));
+    // A token revoked or expired early: refresh once and retry (a 401 means the request was not processed).
+    if (res.status === 401) res = await send(await this.accessToken(owner, opts.signal, true));
+    return res;
+  }
+
+  private eventsUrl(path = "") {
+    return new URL(`/calendar/v3/calendars/primary/events${path}`, this.opts.endpoints?.api ?? GOOGLE_ENDPOINTS.api);
+  }
+
   async call(tool: string, args: Record<string, unknown>, opts: ConnectorCallOptions): Promise<ConnectorResult> {
+    if (tool === "event_create" && opts.classification === "write") return this.createEvent(args as unknown as CreateEventArgs, opts);
+    if (tool === "event_get" && opts.classification === "read") return this.getEvent(String(args.owner ?? ""), String(args.eventId ?? ""), opts);
     if (tool !== "events_list" || opts.classification !== "read") throw new ConnectorError("invalid_input", `unsupported tool ${tool}`, this.id);
     const owner = String(args.owner ?? "");
     const days = Math.min(14, Math.max(1, Number(args.days) || 7));
     if (!owner) throw new ConnectorError("invalid_input", "owner is required", this.id);
     const from = this.now;
-    const u = new URL("/calendar/v3/calendars/primary/events", this.opts.endpoints?.api ?? GOOGLE_ENDPOINTS.api);
+    const u = this.eventsUrl();
     u.search = new URLSearchParams({
       timeMin: from.toISOString(),
       timeMax: new Date(from.getTime() + days * 86_400_000).toISOString(),
@@ -296,17 +347,7 @@ export class GoogleCalendarConnector implements Connector {
       maxResults: String(this.opts.maxEvents ?? 20),
     }).toString();
 
-    const get = async (token: string) => {
-      try {
-        return await (this.opts.fetchImpl ?? fetch)(u, { headers: { authorization: `Bearer ${token}`, accept: "application/json" }, signal: opts.signal ?? AbortSignal.timeout(15_000) });
-      } catch (err) {
-        if ((err as Error).name === "AbortError" || (err as Error).name === "TimeoutError") throw new ConnectorError("unavailable", "Google Calendar timed out", this.id);
-        throw new ConnectorError("unavailable", "Google Calendar is unreachable", this.id);
-      }
-    };
-    let res = await get(await this.accessToken(owner, opts.signal));
-    // A token revoked or expired early: refresh once and retry.
-    if (res.status === 401) res = await get(await this.accessToken(owner, opts.signal, true));
+    const res = await this.request(owner, u, {}, opts);
     if (res.status === 401 || res.status === 403) throw new ConnectorError("denied", "Google Calendar refused access", this.id);
     if (res.status === 429) throw new ConnectorError("throttled", "Google Calendar rate limit", this.id);
     if (!res.ok) throw new ConnectorError("unavailable", `Google Calendar error ${res.status}`, this.id);
@@ -326,12 +367,72 @@ export class GoogleCalendarConnector implements Connector {
     return { data: { events }, text: JSON.stringify({ events }).slice(0, 16_384) };
   }
 
+  /**
+   * Creates one event on the owner's primary calendar. The event id comes from the
+   * proposal, so a redelivered or retried execution finds the existing event (409)
+   * instead of creating a second one.
+   */
+  private async createEvent(a: CreateEventArgs, opts: ConnectorCallOptions): Promise<ConnectorResult> {
+    if (!a.owner || !/^[a-v0-9]{5,1024}$/.test(a.eventId ?? "")) throw new ConnectorError("invalid_input", "owner and a valid eventId are required", this.id);
+    const when = (v: string) => (a.allDay ? { date: v } : { dateTime: `${v}:00`, timeZone: a.timeZone });
+    const body = {
+      id: a.eventId,
+      summary: a.title,
+      ...(a.description ? { description: a.description } : {}),
+      ...(a.location ? { location: a.location } : {}),
+      start: when(a.start),
+      end: when(a.end),
+      ...(a.attendees?.length ? { attendees: a.attendees.map((email) => ({ email })) } : {}),
+    };
+    const u = this.eventsUrl();
+    // Attendees get Google's invitation email; that is stated on the approval card.
+    u.search = new URLSearchParams({ sendUpdates: a.attendees?.length ? "all" : "none" }).toString();
+    const res = await this.request(a.owner, u, { method: "POST", body }, opts);
+    if (res.status === 409) {
+      // Already created by an earlier attempt of this same proposal.
+      const existing = await this.getEvent(a.owner, a.eventId, { ...opts, classification: "read" });
+      const e = existing.data as { found: boolean };
+      if (e.found) return { data: { ...e, created: false }, text: JSON.stringify(e) };
+      throw new ConnectorError("invalid_input", "an event with this id exists but can't be read", this.id);
+    }
+    if (res.status === 403) {
+      const why = await res.text().catch(() => "");
+      if (/insufficient|scope/i.test(why)) throw new ConnectorError("denied", "Google Calendar was connected read-only. Reconnect it under Your connections to allow creating events.", this.id);
+      throw new ConnectorError("denied", "Google Calendar refused to create the event", this.id);
+    }
+    if (res.status === 401) throw new ConnectorError("denied", "Google Calendar refused access", this.id);
+    if (res.status === 429) throw new ConnectorError("throttled", "Google Calendar rate limit", this.id);
+    if (res.status === 400) throw new ConnectorError("invalid_input", "Google Calendar rejected the event details", this.id);
+    // A 5xx after a POST may or may not have created the event: reconcile by id.
+    if (res.status >= 500) throw new ConnectorError("ambiguous_outcome", `Google Calendar error ${res.status}`, this.id);
+    if (!res.ok) throw new ConnectorError("unavailable", `Google Calendar error ${res.status}`, this.id);
+    const e = (await res.json().catch(() => ({}))) as GoogleEvent;
+    const data = { found: true, created: true, eventId: clip(e.id, 1024) || a.eventId, htmlLink: clip(e.htmlLink, 2000) || undefined };
+    return { data, text: JSON.stringify(data) };
+  }
+
+  private async getEvent(owner: string, eventId: string, opts: ConnectorCallOptions): Promise<ConnectorResult> {
+    if (!owner || !/^[a-v0-9]{5,1024}$/.test(eventId)) throw new ConnectorError("invalid_input", "owner and a valid eventId are required", this.id);
+    const res = await this.request(owner, this.eventsUrl(`/${eventId}`), {}, { ...opts, classification: "read" });
+    if (res.status === 404 || res.status === 410) return { data: { found: false }, text: '{"found":false}' };
+    if (res.status === 401 || res.status === 403) throw new ConnectorError("denied", "Google Calendar refused access", this.id);
+    if (!res.ok) throw new ConnectorError("unavailable", `Google Calendar error ${res.status}`, this.id);
+    const e = (await res.json().catch(() => ({}))) as GoogleEvent;
+    if (e.status === "cancelled") return { data: { found: false }, text: '{"found":false}' };
+    const data = { found: true, eventId: clip(e.id, 1024) || eventId, htmlLink: clip(e.htmlLink, 2000) || undefined };
+    return { data, text: JSON.stringify(data) };
+  }
+
   async tools(): Promise<ConnectorToolStatus[]> {
-    return [{ name: "events_list", enabled: true }];
+    return [
+      { name: "events_list", enabled: true },
+      { name: "event_create", enabled: true },
+      { name: "event_get", enabled: true },
+    ];
   }
 
   async health() {
-    return { ok: true, detail: "per-user Google connection (read-only calendar)" };
+    return { ok: true, detail: "per-user Google connection (calendar events)" };
   }
 
   async close() {}
