@@ -269,7 +269,7 @@ Needs your own Google OAuth client and Notion integration: follow
 | 13.5 | Bob | Same question | Nothing from Alice's calendar. Bob's own calendar is "not connected". |
 | 13.6 | Alice | **Disconnect** | "Disconnected. Access was also revoked at Google." In your Google account → Security → Third-party access, the app is gone. |
 | 13.7 | Dana | **Admin → Audit**, filter `connection.` | `connection.google.connected` and `…disconnected` for alice. No token values anywhere. |
-| 13.7a | Alice | Project Assistant: "Create an event 'Atlas go-live review' on 3 November at 14:00" | An approval card: *Create event "Atlas go-live review" on Tue 3 Nov 2026, 14:00–15:00 (<PLATFORM_TIME_ZONE>)*, destination "Your Google Calendar (primary)". Nothing is in Google Calendar yet. |
+| 13.7a | Alice | Project Assistant: "Create an event 'Atlas go-live review' on 3 November at 14:00" | An approval card: *Create event "Atlas go-live review" on Tue 3 Nov 2026, 14:00–15:00 (<your browser's time zone>)*, destination "Your Google Calendar (primary)". Nothing is in Google Calendar yet. |
 | 13.7b | Alice | **Approve** | Within a few seconds the card shows it succeeded, and the event is in Google Calendar, without invitations. Approving again, or a worker restart, doesn't add a second one. |
 | 13.7c | Alice | "Schedule a meeting with bob@example.com on 4 November 10:00–10:30" | The card says Google will email an invitation to bob@example.com. **Reject**: nothing is created. |
 | 13.7d | Alice | Connected before this change (read-only) | The Google card asks to **Reconnect**. Until then, an approved event fails with "Reconnect Google Calendar". |

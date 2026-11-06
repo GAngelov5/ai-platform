@@ -120,7 +120,8 @@ export function registerCalendarCreateCapability(registry: CapabilityRegistry, c
       description:
         `PROPOSE creating an event on the user's own Google Calendar. This never executes directly: it creates a proposal the user must approve. ` +
         `Only use when the user explicitly asks to create, schedule or book an event or meeting. start is "YYYY-MM-DD" for an all-day event or "YYYY-MM-DDTHH:MM" (24-hour, local time); ` +
-        `end is optional (timed events default to one hour). Times are in ${opts.timeZone} unless the user names another time zone (then pass timeZone). ` +
+        `end is optional (timed events default to one hour). Times are in the user's local time zone (given with today's date), or ${opts.timeZone} if none is given; ` +
+        `pass timeZone only when the user names a different time zone. ` +
         `If the user gave no date, ask for it instead of guessing. Add attendees only when the user names their email addresses.`,
       input: CreateEventInput,
       requiredGroups: [],
@@ -137,8 +138,8 @@ export function registerCalendarCreateCapability(registry: CapabilityRegistry, c
     write: {
       connectorId: connector.id,
       tool: "event_create",
-      describe: (input) => {
-        const e = normalizeEvent(input, opts.timeZone);
+      describe: (input, meta) => {
+        const e = normalizeEvent(input, meta?.timeZone ?? opts.timeZone);
         return {
           operation: `Create event "${e.title}" on ${describeWhen(e)}${e.location ? ` at ${e.location}` : ""}`,
           destination: "Your Google Calendar (primary)",
@@ -148,7 +149,7 @@ export function registerCalendarCreateCapability(registry: CapabilityRegistry, c
         };
       },
       toConnectorArgs: (input, meta): Record<string, unknown> => {
-        const e = normalizeEvent(input, opts.timeZone);
+        const e = normalizeEvent(input, meta.timeZone ?? opts.timeZone);
         const args: CreateEventArgs = {
           owner: meta.principalId,
           // Google event ids are base32hex (a-v, 0-9): a hex form of the proposal's key qualifies.

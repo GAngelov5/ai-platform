@@ -65,7 +65,10 @@ the platform's rules?
     existing event. A lost response (`unknown`) reconciles by reading that
     id, and never creates a second event.
 - **Exact text on the card:** times are local `YYYY-MM-DDTHH:MM` in an IANA
-  time zone (`PLATFORM_TIME_ZONE`, unless the user names one). All-day dates
+  time zone: one the user names, else the user's own (their browser sends it
+  with each question, and the model is given their local date and time), else
+  `PLATFORM_TIME_ZONE`. The zone is fixed in the proposal's payload, so the
+  approved event is the one created. All-day dates
   are inclusive for the user and converted to Google's exclusive end. The
   card's date text is formatted by hand, so it can't vary with locale data.
 - **Attendees** only when the user names their addresses. Google then emails

@@ -197,7 +197,7 @@ export default function ChatPage() {
       let shown = base.messages;
       await apiStream<RunEvent>(
         `/api/conversations/${base.id}/messages/stream`,
-        { content },
+        { content, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
         (e) => {
           if (e.type === "run.started") {
             shown = [...shown, e.userMessage];
@@ -344,8 +344,9 @@ export default function ChatPage() {
             </div>
           )}
 
+          {/* Pinned to the window's bottom: a long recent list makes this column taller than the window. */}
           <form
-            className="mt-auto flex max-w-[760px] gap-2"
+            className="sticky bottom-0 mt-auto flex max-w-[760px] gap-2 bg-canvas py-3"
             onSubmit={(e) => {
               e.preventDefault();
               void send();

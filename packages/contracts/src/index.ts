@@ -8,6 +8,20 @@ import { z } from "zod";
 
 export const IdSchema = z.string().min(1).max(200).regex(/^[A-Za-z0-9._:#-]+$/);
 
+/** An IANA time zone name ("Europe/Sofia") that this runtime knows. */
+export const TimeZoneSchema = z
+  .string()
+  .trim()
+  .max(64)
+  .refine((z) => {
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: z });
+      return true;
+    } catch {
+      return false;
+    }
+  }, "an IANA time zone such as Europe/Sofia");
+
 // ---------------------------------------------------------------------------
 // Knowledge
 // ---------------------------------------------------------------------------
@@ -146,6 +160,8 @@ export type CreateConversationRequest = z.infer<typeof CreateConversationRequest
 
 export const PostMessageRequestSchema = z.strictObject({
   content: z.string().trim().min(1).max(4000),
+  /** The browser's time zone: the user's "10:00" and "tomorrow" mean their local time. */
+  timeZone: TimeZoneSchema.optional(),
 });
 export type PostMessageRequest = z.infer<typeof PostMessageRequestSchema>;
 

@@ -91,6 +91,18 @@ describe("calendar.event.create", () => {
     expect(done.receipt).toMatchObject({ created: true, eventId: p.payload.eventId });
   });
 
+  it("uses the proposing user's own time zone, then a zone the user named, then the platform's", async () => {
+    const { svc, connect } = await world();
+    await connect("alice", "alice@example.test");
+    const input = { title: "Stand-up", start: "2026-11-03T10:00" };
+    const mine = await svc.propose(ctx("alice"), { capabilityId: "calendar.event.create", input, timeZone: "America/New_York" });
+    expect(mine.operation).toBe('Create event "Stand-up" on Tue 3 Nov 2026, 10:00–11:00 (America/New_York)');
+    expect(mine.payload).toMatchObject({ start: "2026-11-03T10:00", timeZone: "America/New_York" });
+    const named = await svc.propose(ctx("alice"), { capabilityId: "calendar.event.create", input: { ...input, timeZone: "Asia/Tokyo" }, timeZone: "America/New_York" });
+    expect(named.payload).toMatchObject({ timeZone: "Asia/Tokyo" });
+    expect((await propose(svc, "alice", input)).payload).toMatchObject({ timeZone: "Europe/Sofia" });
+  });
+
   it("the model can't choose whose calendar: the owner is always the proposer", async () => {
     const { svc } = await world();
     await expect(propose(svc, "alice", { title: "x", start: "2026-11-03T14:00", owner: "bob" })).rejects.toThrow();

@@ -79,7 +79,7 @@ function trackerRegistry(opts: { healthy?: boolean; injection?: boolean } = {}) 
   return { reg, reads };
 }
 
-function harness(evidence: Evidence[], o: { model?: ModelGateway; registry?: CapabilityRegistry } = {}) {
+function harness(evidence: Evidence[], o: { model?: ModelGateway; registry?: CapabilityRegistry; now?: () => Date } = {}) {
   const searches: unknown[] = [];
   const knowledge = {
     search: async (_c: unknown, input: unknown) => (searches.push(input), evidence),
@@ -97,6 +97,7 @@ function harness(evidence: Evidence[], o: { model?: ModelGateway; registry?: Cap
     capabilities: o.registry ?? new CapabilityRegistry(),
     actions,
     liveEvidence: { record: async (rows) => void live.push(...rows) },
+    now: o.now,
   });
   return { runtime, searches, finished, model, proposals, live };
 }
@@ -179,6 +180,20 @@ describe("AgentRuntime (context router)", () => {
     const r = await run(h, "What is the budget?");
     expect(r.status).toBe("insufficient_evidence");
     expect(r.citations).toEqual([]);
+  });
+
+  it("gives the model the user's local date and time zone when the browser sent one", async () => {
+    const systems: string[] = [];
+    const model: ModelGateway = {
+      descriptor: { provider: "test", name: "rec" },
+      generate: async (req) => (systems.push(req.system), { text: "ok", finishReason: "stop", usage: {}, model: { provider: "test", name: "rec" } }),
+    };
+    // 22:30 UTC on 1 Nov is already 2 Nov in Sofia.
+    const { runtime } = harness([], { model, now: () => new Date("2026-11-01T22:30:00Z") });
+    await runtime.run(ctx, { agent: defineAgent(agentDef), question: "Atlas?", principalGroups: ["atlas-team"], timeZone: "Europe/Sofia" });
+    await runtime.run(ctx, { agent: defineAgent(agentDef), question: "Atlas?", principalGroups: ["atlas-team"] });
+    expect(systems[0]).toContain("Today is 2026-11-02. The user's local time is 00:30 (Europe/Sofia)");
+    expect(systems[1]).toContain("Today is 2026-11-01.");
   });
 
   it("strips citations the model invents", async () => {

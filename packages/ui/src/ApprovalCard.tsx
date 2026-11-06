@@ -57,7 +57,9 @@ export function ApprovalCard({ proposal: p, busy, onApprove, onReject }: Approva
         {p.receipt && (
           <>
             <dt className="text-muted">{t("approval.receipt")}</dt>
-            <dd className="font-mono text-[12.5px]">{String((p.receipt as { commentId?: string }).commentId ?? JSON.stringify(p.receipt))}</dd>
+            <dd>
+              <Receipt receipt={p.receipt} />
+            </dd>
           </>
         )}
         {p.lastError && (
@@ -90,4 +92,28 @@ export function ApprovalCard({ proposal: p, busy, onApprove, onReject }: Approva
       {pending && expired && <p className="mt-3 text-xs text-muted">{t("approval.expiredNote")}</p>}
     </section>
   );
+}
+
+/** What the provider confirmed, in words; ids stay in the audit record. */
+function Receipt({ receipt }: { receipt: Record<string, unknown> }) {
+  const { t } = useT();
+  if (typeof receipt.eventId === "string") {
+    // Only Google's own event page is linked: the receipt came back from a provider.
+    const link = typeof receipt.htmlLink === "string" && receipt.htmlLink.startsWith("https://www.google.com/calendar/") ? receipt.htmlLink : undefined;
+    return (
+      <>
+        {t("approval.receipt.event")}
+        {link && (
+          <>
+            {" "}
+            <a href={link} target="_blank" rel="noopener noreferrer">
+              {t("approval.receipt.openEvent")}
+            </a>
+          </>
+        )}
+      </>
+    );
+  }
+  if (typeof receipt.commentId === "string") return <>{t("approval.receipt.comment")}</>;
+  return <>{t("approval.receipt.done")}</>;
 }

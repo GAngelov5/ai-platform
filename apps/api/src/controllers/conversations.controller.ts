@@ -113,13 +113,13 @@ export class ConversationsController {
    * deployment runs one API instance.
    */
   private async turn(ctx: TrustedContext, id: string, body: unknown, opts: { onEvent?: (e: RunEvent) => void } = {}): Promise<PostMessageResponse> {
-    const { content } = PostMessageRequestSchema.parse(body);
+    const { content, timeZone } = PostMessageRequestSchema.parse(body);
     const c = await this.owned(ctx, id);
     if (this.inflight.has(c.id)) throw new ConflictException("Your previous question in this conversation is still being answered.");
     const controller = new AbortController();
     this.inflight.set(c.id, controller);
     try {
-      return await this.runTurn(ctx, c, content, controller.signal, opts.onEvent);
+      return await this.runTurn(ctx, c, content, timeZone, controller.signal, opts.onEvent);
     } finally {
       this.inflight.delete(c.id);
     }
@@ -129,6 +129,7 @@ export class ConversationsController {
     ctx: TrustedContext,
     c: Awaited<ReturnType<ConversationsController["owned"]>>,
     content: string,
+    timeZone: string | undefined,
     signal: AbortSignal,
     onEvent?: (e: RunEvent) => void,
   ): Promise<PostMessageResponse> {
@@ -153,6 +154,7 @@ export class ConversationsController {
       principalGroups: principal.groups,
       conversationId: c.id,
       history,
+      timeZone,
       signal,
       onEvent: (e) => onEvent?.(e),
     });

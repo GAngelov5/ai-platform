@@ -47,6 +47,8 @@ export interface ProposeInput {
   runId?: string;
   dedupeKey?: string;
   ttlMs?: number;
+  /** The proposing user's IANA time zone, for writes that take local times. */
+  timeZone?: string;
 }
 
 const isUniqueViolation = (err: unknown): boolean => {
@@ -163,8 +165,8 @@ export class ActionService {
     if (!this.authorized(principal, ctx.customerId, cap)) throw new NotFoundOrForbiddenError();
     const parsed = cap.definition.input.parse(input.input);
     const idempotencyKey = randomUUID();
-    const payload = cap.write.toConnectorArgs(parsed, { idempotencyKey, principalId: ctx.principalId, principalDisplayName: principal!.displayName });
-    const desc = cap.write.describe(parsed);
+    const payload = cap.write.toConnectorArgs(parsed, { idempotencyKey, principalId: ctx.principalId, principalDisplayName: principal!.displayName, timeZone: input.timeZone });
+    const desc = cap.write.describe(parsed, { timeZone: input.timeZone });
     const base = {
       customerId: ctx.customerId,
       principalId: ctx.principalId,

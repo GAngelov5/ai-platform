@@ -55,9 +55,12 @@ export interface WriteDescription {
 export interface WriteBinding {
   connectorId: string;
   tool: string;
-  describe(input: Record<string, unknown>): WriteDescription;
-  /** Complete connector arguments; bound into the approval hash. */
-  toConnectorArgs(input: Record<string, unknown>, meta: { idempotencyKey: string; principalId: string; principalDisplayName: string }): Record<string, unknown>;
+  describe(input: Record<string, unknown>, meta?: { timeZone?: string }): WriteDescription;
+  /**
+   * Complete connector arguments; bound into the approval hash. `timeZone` is
+   * the proposing user's (from their browser), when known.
+   */
+  toConnectorArgs(input: Record<string, unknown>, meta: { idempotencyKey: string; principalId: string; principalDisplayName: string; timeZone?: string }): Record<string, unknown>;
   /** Reconciles an uncertain outcome. Returns a receipt if the write is confirmed. */
   reconcile?(read: (tool: string, args: Record<string, unknown>) => Promise<unknown>, connectorArgs: Record<string, unknown>): Promise<Record<string, unknown> | undefined>;
   receipt(result: unknown): Record<string, unknown>;
